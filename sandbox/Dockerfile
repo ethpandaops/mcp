@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
 
 # Install the xatu library
 COPY xatu /opt/xatu
-RUN pip install -e /opt/xatu
+RUN pip install /opt/xatu && rm -rf /opt/xatu
 
 # Set working directory
 WORKDIR /home/sandbox

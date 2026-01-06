@@ -1,1 +1,258 @@
 # xatu-mcp
+
+An MCP (Model Context Protocol) server for Ethereum network analytics via [Xatu](https://github.com/ethpandaops/xatu) data.
+
+## Overview
+
+xatu-mcp enables AI assistants to analyze Ethereum blockchain data by providing:
+
+- **Sandboxed Python execution** with pre-installed data analysis libraries
+- **ClickHouse access** to raw and aggregated blockchain data across multiple networks
+- **Schema introspection** for understanding table structures
+- **Query examples** to guide data exploration
+- **File storage** for charts and outputs via S3-compatible storage
+
+## Features
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `execute_python` | Execute Python code in an isolated sandbox with the `xatu` library |
+| `list_output_files` | List files generated in the `/output` directory |
+| `get_output_file` | Retrieve content or URLs for output files |
+
+### Resources
+
+| Resource | Description |
+|----------|-------------|
+| `schema://clusters` | List available ClickHouse clusters |
+| `schema://tables/{cluster}` | List tables in a cluster |
+| `schema://tables/{cluster}/{table}` | Detailed table schema |
+| `examples://queries` | Common query patterns |
+| `networks://available` | Available Ethereum networks |
+| `api://xatu` | Xatu library API documentation |
+
+### Available ClickHouse Clusters
+
+| Cluster | Description | Networks |
+|---------|-------------|----------|
+| `xatu` | Production raw data | mainnet, sepolia, holesky, hoodi |
+| `xatu-experimental` | Devnet data | pectra-devnet-6, etc. |
+| `xatu-cbt` | Aggregated/CBT tables | mainnet, sepolia, holesky |
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/ethpandaops/xatu-mcp.git
+cd xatu-mcp
+
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
+pip install -e .
+```
+
+## Configuration
+
+Copy the example configuration and customize it:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+### Environment Variables
+
+The configuration supports environment variable substitution using `${VAR_NAME}` syntax:
+
+```yaml
+clickhouse:
+  xatu:
+    user: "${CLICKHOUSE_USER}"
+    password: "${CLICKHOUSE_PASSWORD}"
+```
+
+Required environment variables depend on your configuration:
+- `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` - ClickHouse credentials
+- `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` - Storage credentials
+- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` - OAuth (if auth enabled)
+
+## Usage
+
+### Start the Server
+
+```bash
+# Stdio transport (for local MCP clients)
+xatu-mcp serve
+
+# SSE transport (for web-based clients)
+xatu-mcp serve --transport sse --port 8080
+
+# Streamable HTTP transport
+xatu-mcp serve --transport streamable-http --port 8080
+```
+
+### Docker Compose
+
+For a complete local development environment:
+
+```bash
+docker-compose up -d
+```
+
+This starts:
+- MCP server on port 8080
+- PostgreSQL for session storage
+- MinIO for S3-compatible storage
+
+### Claude Desktop Integration
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "xatu": {
+      "command": "xatu-mcp",
+      "args": ["serve"],
+      "env": {
+        "CONFIG_PATH": "/path/to/config.yaml",
+        "CLICKHOUSE_USER": "your-user",
+        "CLICKHOUSE_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+## Sandbox Environment
+
+Python code executes in an isolated Docker container with:
+
+### Pre-installed Libraries
+
+- **Data Analysis**: pandas, numpy, polars
+- **Visualization**: matplotlib, seaborn, plotly
+- **ClickHouse**: clickhouse-connect
+- **HTTP Client**: httpx
+- **S3 Client**: boto3
+
+### The `xatu` Library
+
+```python
+from xatu import clickhouse, prometheus, loki, storage
+
+# Query ClickHouse for blockchain data
+df = clickhouse.query("mainnet", """
+    SELECT
+        slot,
+        block_root,
+        proposer_index
+    FROM beacon_api_eth_v1_events_block
+    WHERE meta_network_name = 'mainnet'
+    LIMIT 10
+""")
+
+# Query Prometheus metrics
+result = prometheus.query("up")
+
+# Query Loki logs
+logs = loki.query('{job="beacon"}')
+
+# Save and upload a chart
+import matplotlib.pyplot as plt
+plt.figure(figsize=(10, 6))
+plt.plot(df['slot'], df['proposer_index'])
+plt.savefig('/output/chart.png')
+
+# Upload to get a public URL
+url = storage.upload('/output/chart.png')
+print(f"Chart: {url}")
+```
+
+### Output Files
+
+All output files should be written to `/output/`. Files are automatically tracked and can be uploaded to S3 for public access.
+
+## Authentication
+
+When deploying as a public service, enable GitHub OAuth authentication:
+
+```yaml
+auth:
+  enabled: true
+  github:
+    client_id: "${GITHUB_CLIENT_ID}"
+    client_secret: "${GITHUB_CLIENT_SECRET}"
+  allowed_orgs:
+    - "ethpandaops"
+```
+
+## Observability
+
+### Metrics
+
+Prometheus metrics are exposed on port 9090 (configurable):
+
+```yaml
+observability:
+  metrics_enabled: true
+  metrics_port: 9090
+```
+
+### Tracing
+
+OpenTelemetry tracing is supported:
+
+```yaml
+observability:
+  tracing_enabled: true
+  otlp_endpoint: "${OTLP_ENDPOINT}"
+```
+
+## Development
+
+```bash
+# Install dev dependencies
+uv sync --all-extras
+
+# Run tests
+pytest
+
+# Lint and format
+ruff check .
+ruff format .
+
+# Type check
+mypy src/
+```
+
+### Building the Sandbox Image
+
+```bash
+cd sandbox
+docker build -t xatu-mcp-sandbox:latest .
+```
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐
+│   MCP Client    │────▶│   xatu-mcp       │
+│  (Claude, etc)  │     │    Server        │
+└─────────────────┘     └────────┬─────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        ▼                        ▼                        ▼
+┌───────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│   Sandbox     │      │   ClickHouse    │      │   S3 Storage    │
+│   (Docker/    │      │   Clusters      │      │   (MinIO/R2)    │
+│    gVisor)    │      │                 │      │                 │
+└───────────────┘      └─────────────────┘      └─────────────────┘
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

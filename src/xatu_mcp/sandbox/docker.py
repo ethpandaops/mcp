@@ -1,8 +1,8 @@
 """Docker sandbox backend for code execution."""
 
 import asyncio
-import os
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 
@@ -12,6 +12,9 @@ import structlog
 from xatu_mcp.sandbox.base import ExecutionResult, SandboxBackend
 
 logger = structlog.get_logger()
+
+# Execution ID prefix length for unique container identification
+EXECUTION_ID_LENGTH = 8
 
 
 class DockerBackend(SandboxBackend):
@@ -34,7 +37,8 @@ class DockerBackend(SandboxBackend):
     ) -> None:
         super().__init__(image, timeout, memory_limit, cpu_limit, network)
         self._client: docker.DockerClient | None = None
-        self._active_containers: set[str] = set()
+        self._active_containers: dict[str, docker.models.containers.Container] = {}
+        self._lock = threading.Lock()  # Thread-safe access to _active_containers
 
     @property
     def client(self) -> docker.DockerClient:
@@ -46,6 +50,29 @@ class DockerBackend(SandboxBackend):
     @property
     def name(self) -> str:
         return "docker"
+
+    def _track_container(self, execution_id: str, container: docker.models.containers.Container) -> None:
+        """Thread-safe container tracking."""
+        with self._lock:
+            self._active_containers[execution_id] = container
+
+    def _untrack_container(self, execution_id: str) -> docker.models.containers.Container | None:
+        """Thread-safe container untracking. Returns the container if it was tracked."""
+        with self._lock:
+            return self._active_containers.pop(execution_id, None)
+
+    def _force_kill_container(self, execution_id: str) -> None:
+        """Force kill a container by execution_id (used on timeout)."""
+        container = self._untrack_container(execution_id)
+        if container:
+            try:
+                logger.warning("Force killing timed out container", execution_id=execution_id)
+                container.kill()
+                container.remove(force=True)
+            except docker.errors.NotFound:
+                pass  # Already removed
+            except Exception as e:
+                logger.error("Failed to force kill container", execution_id=execution_id, error=str(e))
 
     async def execute(
         self,
@@ -64,7 +91,7 @@ class DockerBackend(SandboxBackend):
             ExecutionResult with stdout, stderr, exit code, and output files.
         """
         execution_timeout = timeout or self.timeout
-        execution_id = str(uuid.uuid4())[:8]
+        execution_id = str(uuid.uuid4())[:EXECUTION_ID_LENGTH]
 
         # Create temp directories for shared files and output
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,6 +136,8 @@ class DockerBackend(SandboxBackend):
                     timeout=execution_timeout + 5,  # Extra time for container overhead
                 )
             except asyncio.TimeoutError:
+                # Force kill the container that's still running
+                self._force_kill_container(execution_id)
                 logger.warning("Container execution timed out", execution_id=execution_id)
                 raise TimeoutError(f"Execution timed out after {execution_timeout}s")
 
@@ -145,7 +174,15 @@ class DockerBackend(SandboxBackend):
         env: dict[str, str],
         timeout: int,
     ) -> dict:
-        """Run the container synchronously (called from thread pool)."""
+        """Run the container synchronously (called from thread pool).
+
+        Includes security hardening options:
+        - Non-root user (if supported by image)
+        - Read-only root filesystem (except for /output)
+        - No new privileges
+        - Drop all capabilities
+        - Disable network if not needed
+        """
         import time
 
         start_time = time.time()
@@ -165,9 +202,17 @@ class DockerBackend(SandboxBackend):
                 detach=True,
                 stderr=True,
                 stdout=True,
+                # Security hardening options
+                user="nobody",  # Run as non-root user
+                read_only=True,  # Read-only root filesystem
+                security_opt=["no-new-privileges:true"],  # Prevent privilege escalation
+                cap_drop=["ALL"],  # Drop all Linux capabilities
+                tmpfs={"/tmp": "size=100M,mode=1777"},  # Writable /tmp in memory
+                pids_limit=100,  # Limit number of processes
             )
 
-            self._active_containers.add(container.id)
+            # Track container for potential timeout cleanup
+            self._track_container(execution_id, container)
 
             # Wait for container to finish
             result = container.wait(timeout=timeout)
@@ -213,10 +258,13 @@ class DockerBackend(SandboxBackend):
             }
 
         finally:
+            # Untrack and remove container
+            self._untrack_container(execution_id)
             if container:
                 try:
                     container.remove(force=True)
-                    self._active_containers.discard(container.id)
+                except docker.errors.NotFound:
+                    pass  # Already removed (e.g., by force kill on timeout)
                 except Exception as e:
                     logger.warning(
                         "Failed to remove container",
@@ -226,16 +274,23 @@ class DockerBackend(SandboxBackend):
 
     async def cleanup(self) -> None:
         """Clean up any active containers."""
-        for container_id in list(self._active_containers):
+        with self._lock:
+            containers_to_cleanup = list(self._active_containers.items())
+            self._active_containers.clear()
+
+        for execution_id, container in containers_to_cleanup:
             try:
-                container = self.client.containers.get(container_id)
+                container.kill()
                 container.remove(force=True)
-                logger.debug("Cleaned up container", container_id=container_id)
+                logger.debug("Cleaned up container", execution_id=execution_id)
             except docker.errors.NotFound:
-                pass
+                pass  # Already removed
             except Exception as e:
-                logger.warning("Failed to cleanup container", container_id=container_id, error=str(e))
-            self._active_containers.discard(container_id)
+                logger.warning(
+                    "Failed to cleanup container",
+                    execution_id=execution_id,
+                    error=str(e),
+                )
 
         if self._client:
             self._client.close()

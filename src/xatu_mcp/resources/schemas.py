@@ -1,44 +1,27 @@
-"""MCP Resources for domain knowledge.
-
-This module provides resources that expose domain knowledge about:
-- ClickHouse schemas and tables
-- Common query examples
-- Available Ethereum networks
-- Xatu library API documentation
-"""
+"""Schema resources for ClickHouse cluster and table information."""
 
 import json
 import re
 
 from mcp.server import Server
-from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import Resource, ResourceTemplate
 from pydantic import AnyUrl
 import structlog
 
-from xatu_mcp.resources.api import XATU_API_DOCS
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+
 from xatu_mcp.resources.clickhouse_client import (
     CLUSTERS,
     ClickHouseClient,
     get_cluster,
     list_clusters,
 )
-from xatu_mcp.resources.examples import QUERY_EXAMPLES
-from xatu_mcp.resources.networks import CLUSTER_NETWORKS, NETWORKS
 
 logger = structlog.get_logger()
 
 
-def register_resources(server: Server) -> None:
-    """Register all MCP resources with the server.
-
-    This function registers handlers for:
-    - schema://clusters - List ClickHouse clusters
-    - schema://tables/{cluster} - List tables in a cluster
-    - schema://tables/{cluster}/{table} - Table schema details
-    - examples://queries - Common query patterns
-    - networks://available - Available networks
-    - api://xatu - Xatu library API docs
+def register_schema_resources(server: Server) -> None:
+    """Register schema:// resources with the MCP server.
 
     Args:
         server: The MCP server instance.
@@ -46,7 +29,7 @@ def register_resources(server: Server) -> None:
 
     @server.list_resources()
     async def list_resources() -> list[Resource]:
-        """List all available static resources."""
+        """List available static schema resources."""
         return [
             Resource(
                 uri=AnyUrl("schema://clusters"),
@@ -54,47 +37,29 @@ def register_resources(server: Server) -> None:
                 description="List of available ClickHouse clusters and their networks",
                 mimeType="application/json",
             ),
-            Resource(
-                uri=AnyUrl("examples://queries"),
-                name="Query Examples",
-                description="Common ClickHouse query patterns organized by use case",
-                mimeType="application/json",
-            ),
-            Resource(
-                uri=AnyUrl("networks://available"),
-                name="Available Networks",
-                description="List of available Ethereum networks and their configurations",
-                mimeType="application/json",
-            ),
-            Resource(
-                uri=AnyUrl("api://xatu"),
-                name="Xatu Library API",
-                description="API documentation for the xatu Python library available in the sandbox",
-                mimeType="application/json",
-            ),
         ]
 
     @server.list_resource_templates()
     async def list_resource_templates() -> list[ResourceTemplate]:
-        """List available resource templates with URI parameters."""
+        """List available schema resource templates."""
         return [
             ResourceTemplate(
                 uriTemplate="schema://tables/{cluster}",
                 name="Cluster Tables",
-                description="List all tables in a ClickHouse cluster. Cluster: xatu, xatu-experimental, xatu-cbt",
+                description="List all tables in a ClickHouse cluster. Cluster must be one of: xatu, xatu-experimental, xatu-cbt",
                 mimeType="application/json",
             ),
             ResourceTemplate(
                 uriTemplate="schema://tables/{cluster}/{table}",
                 name="Table Schema",
-                description="Detailed schema for a specific table including columns, types, and keys",
+                description="Detailed schema information for a specific table including columns, types, and keys",
                 mimeType="application/json",
             ),
         ]
 
     @server.read_resource()
     async def read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
-        """Read a resource by URI.
+        """Read a schema resource.
 
         Args:
             uri: The resource URI to read.
@@ -106,37 +71,29 @@ def register_resources(server: Server) -> None:
             ValueError: If the URI is not recognized or parameters are invalid.
         """
         uri_str = str(uri)
-        logger.debug("Reading resource", uri=uri_str)
+        logger.debug("Reading schema resource", uri=uri_str)
 
-        # Static resources
+        # Handle schema://clusters
         if uri_str == "schema://clusters":
-            return _read_clusters()
+            return await _read_clusters()
 
-        if uri_str == "examples://queries":
-            return _read_examples()
-
-        if uri_str == "networks://available":
-            return _read_networks()
-
-        if uri_str == "api://xatu":
-            return _read_api_docs()
-
-        # Template resources
+        # Handle schema://tables/{cluster}
         tables_match = re.match(r"^schema://tables/([^/]+)$", uri_str)
         if tables_match:
             cluster_name = tables_match.group(1)
             return await _read_tables(cluster_name)
 
+        # Handle schema://tables/{cluster}/{table}
         table_schema_match = re.match(r"^schema://tables/([^/]+)/([^/]+)$", uri_str)
         if table_schema_match:
             cluster_name = table_schema_match.group(1)
             table_name = table_schema_match.group(2)
             return await _read_table_schema(cluster_name, table_name)
 
-        raise ValueError(f"Unknown resource URI: {uri_str}")
+        raise ValueError(f"Unknown schema resource URI: {uri_str}")
 
 
-def _read_clusters() -> list[ReadResourceContents]:
+async def _read_clusters() -> list[ReadResourceContents]:
     """Read the clusters resource."""
     clusters_data = []
     for cluster in list_clusters():
@@ -148,43 +105,6 @@ def _read_clusters() -> list[ReadResourceContents]:
         })
 
     content = json.dumps({"clusters": clusters_data}, indent=2)
-    return [ReadResourceContents(content=content, mime_type="application/json")]
-
-
-def _read_examples() -> list[ReadResourceContents]:
-    """Read the examples resource."""
-    content = json.dumps(
-        {
-            "description": "Common ClickHouse query patterns for Xatu data analysis",
-            "categories": QUERY_EXAMPLES,
-        },
-        indent=2,
-    )
-    return [ReadResourceContents(content=content, mime_type="application/json")]
-
-
-def _read_networks() -> list[ReadResourceContents]:
-    """Read the networks resource."""
-    content = json.dumps(
-        {
-            "description": "Available Ethereum networks with their configurations and cluster mappings",
-            "networks": NETWORKS,
-            "cluster_networks": CLUSTER_NETWORKS,
-            "usage_notes": {
-                "querying": "Use meta_network_name = '<network>' in WHERE clauses to filter by network",
-                "mainnet": "Use 'mainnet' for production Ethereum data",
-                "testnets": "Sepolia and Holesky are the primary testnets for most use cases",
-                "devnets": "Devnet data is only available on xatu-experimental cluster",
-            },
-        },
-        indent=2,
-    )
-    return [ReadResourceContents(content=content, mime_type="application/json")]
-
-
-def _read_api_docs() -> list[ReadResourceContents]:
-    """Read the API documentation resource."""
-    content = json.dumps(XATU_API_DOCS, indent=2)
     return [ReadResourceContents(content=content, mime_type="application/json")]
 
 
@@ -209,6 +129,7 @@ async def _read_tables(cluster_name: str) -> list[ReadResourceContents]:
     try:
         tables = await client.list_tables()
 
+        # Format the table data
         tables_data = []
         for table in tables:
             tables_data.append({
@@ -253,12 +174,15 @@ async def _read_table_schema(cluster_name: str, table_name: str) -> list[ReadRes
 
     client = ClickHouseClient(cluster)
     try:
+        # Get table metadata
         table_info = await client.get_table_info(table_name)
         if table_info is None:
             raise ValueError(f"Table not found: {table_name} in cluster {cluster_name}")
 
+        # Get column schema
         columns = await client.get_table_schema(table_name)
 
+        # Format the schema data
         columns_data = []
         for col in columns:
             col_data = {
@@ -295,6 +219,3 @@ async def _read_table_schema(cluster_name: str, table_name: str) -> list[ReadRes
         return [ReadResourceContents(content=content, mime_type="application/json")]
     finally:
         await client.close()
-
-
-__all__ = ["register_resources"]

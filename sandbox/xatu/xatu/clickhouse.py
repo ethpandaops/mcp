@@ -156,9 +156,7 @@ def query(
 
     client = _get_client(cluster)
 
-    result = client.query(sql, parameters=parameters)
-
-    return result.result_set_to_df()
+    return client.query_df(sql, parameters=parameters)
 
 
 def query_raw(
@@ -216,9 +214,7 @@ def describe_table(table: str, cluster: str = "xatu") -> pd.DataFrame:
     """
     client = _get_client(cluster)
 
-    result = client.query(f"DESCRIBE TABLE {table}")
-
-    return result.result_set_to_df()
+    return client.query_df(f"DESCRIBE TABLE {table}")
 
 
 def get_available_networks() -> dict[str, list[str]]:

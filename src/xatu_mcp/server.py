@@ -1,5 +1,7 @@
 """MCP server setup and transport runners."""
 
+from typing import Any
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import structlog
@@ -8,6 +10,53 @@ from xatu_mcp.config import Config
 from xatu_mcp.sandbox import DockerBackend, GVisorBackend, SandboxBackend
 
 logger = structlog.get_logger()
+
+
+# Global authorization server instance (set when auth is enabled)
+_auth_server: Any = None
+
+
+def create_auth_server(config: Config) -> Any:
+    """Create the authorization server if auth is enabled.
+
+    Args:
+        config: Server configuration.
+
+    Returns:
+        AuthorizationServer instance if auth is enabled, None otherwise.
+    """
+    global _auth_server
+
+    if not config.auth.enabled:
+        logger.info("Authentication disabled")
+        return None
+
+    if not config.auth.github:
+        raise ValueError("GitHub OAuth configuration is required when auth is enabled")
+
+    from xatu_mcp.auth import AuthorizationServer
+
+    _auth_server = AuthorizationServer(
+        config=config.auth,
+        base_url=config.server.base_url,
+    )
+
+    logger.info(
+        "Authorization server created",
+        base_url=config.server.base_url,
+        allowed_orgs=config.auth.allowed_orgs,
+    )
+
+    return _auth_server
+
+
+def get_auth_server() -> Any:
+    """Get the global authorization server instance.
+
+    Returns:
+        AuthorizationServer instance or None if not initialized.
+    """
+    return _auth_server
 
 
 def create_sandbox_backend(config: Config) -> SandboxBackend:
@@ -45,15 +94,23 @@ def create_server(config: Config) -> Server:
     """
     server = Server("xatu-mcp")
 
+    # Register ClickHouse clusters from config (must be done before resources)
+    from xatu_mcp.resources.clickhouse_client import register_clusters_from_config
+
+    register_clusters_from_config(config)
+
     # Create sandbox backend
     sandbox = create_sandbox_backend(config)
 
-    # Register tools
-    from xatu_mcp.tools.execute_python import register_execute_python
-    from xatu_mcp.tools.files import register_file_tools
+    # Register all tools in a unified handler (fixes handler overwriting issue)
+    from xatu_mcp.tools import register_all_tools
 
-    register_execute_python(server, sandbox, config)
-    register_file_tools(server, config)
+    register_all_tools(server, sandbox, config)
+
+    # Register resources
+    from xatu_mcp.resources import register_resources
+
+    register_resources(server)
 
     logger.info(
         "MCP server created",
@@ -90,6 +147,7 @@ async def run_sse(server: Server, config: Config) -> None:
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
+    from starlette.responses import JSONResponse
     import uvicorn
 
     logger.info("Starting SSE transport", host=config.server.host, port=config.server.port)
@@ -108,12 +166,34 @@ async def run_sse(server: Server, config: Config) -> None:
                 server.create_initialization_options(),
             )
 
-    app = Starlette(
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Route("/messages/", endpoint=sse.handle_post_message, methods=["POST"]),
-        ],
-    )
+    async def health_check(request):
+        return JSONResponse({"status": "healthy"})
+
+    # Build routes
+    routes = [
+        Route("/sse", endpoint=handle_sse),
+        Route("/messages/", endpoint=sse.handle_post_message, methods=["POST"]),
+        Route("/health", endpoint=health_check),
+    ]
+
+    # Add auth routes if enabled
+    auth_server = create_auth_server(config)
+    if auth_server:
+        routes.extend(auth_server.get_routes())
+
+    app = Starlette(routes=routes)
+
+    # Add auth middleware if enabled
+    if auth_server:
+        from xatu_mcp.auth import AuthenticationMiddleware
+
+        app.add_middleware(
+            AuthenticationMiddleware,
+            config=config.auth,
+            token_manager=auth_server.token_manager,
+            store=auth_server.store,
+            base_url=config.server.base_url,
+        )
 
     uvicorn_config = uvicorn.Config(
         app,
@@ -135,6 +215,7 @@ async def run_streamable_http(server: Server, config: Config) -> None:
     from mcp.server.streamable_http import StreamableHTTPServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
+    from starlette.responses import JSONResponse
     import uvicorn
 
     logger.info(
@@ -157,16 +238,36 @@ async def run_streamable_http(server: Server, config: Config) -> None:
         )
 
     async def health_check(request):
-        from starlette.responses import JSONResponse
-
         return JSONResponse({"status": "healthy"})
 
-    app = Starlette(
-        routes=[
-            Route("/mcp", endpoint=handle_mcp, methods=["GET", "POST"]),
-            Route("/health", endpoint=health_check),
-        ],
-    )
+    async def ready_check(request):
+        return JSONResponse({"status": "ready"})
+
+    # Build routes
+    routes = [
+        Route("/mcp", endpoint=handle_mcp, methods=["GET", "POST"]),
+        Route("/health", endpoint=health_check),
+        Route("/ready", endpoint=ready_check),
+    ]
+
+    # Add auth routes if enabled
+    auth_server = create_auth_server(config)
+    if auth_server:
+        routes.extend(auth_server.get_routes())
+
+    app = Starlette(routes=routes)
+
+    # Add auth middleware if enabled
+    if auth_server:
+        from xatu_mcp.auth import AuthenticationMiddleware
+
+        app.add_middleware(
+            AuthenticationMiddleware,
+            config=config.auth,
+            token_manager=auth_server.token_manager,
+            store=auth_server.store,
+            base_url=config.server.base_url,
+        )
 
     uvicorn_config = uvicorn.Config(
         app,

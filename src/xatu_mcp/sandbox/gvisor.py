@@ -2,6 +2,7 @@
 
 import asyncio
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 
@@ -11,6 +12,9 @@ import structlog
 from xatu_mcp.sandbox.base import ExecutionResult, SandboxBackend
 
 logger = structlog.get_logger()
+
+# Execution ID prefix length for unique container identification
+EXECUTION_ID_LENGTH = 8
 
 
 class GVisorBackend(SandboxBackend):
@@ -36,7 +40,8 @@ class GVisorBackend(SandboxBackend):
     ) -> None:
         super().__init__(image, timeout, memory_limit, cpu_limit, network)
         self._client: docker.DockerClient | None = None
-        self._active_containers: set[str] = set()
+        self._active_containers: dict[str, docker.models.containers.Container] = {}
+        self._lock = threading.Lock()  # Thread-safe access to _active_containers
         self._runtime_checked = False
 
     @property
@@ -49,6 +54,29 @@ class GVisorBackend(SandboxBackend):
     @property
     def name(self) -> str:
         return "gvisor"
+
+    def _track_container(self, execution_id: str, container: docker.models.containers.Container) -> None:
+        """Thread-safe container tracking."""
+        with self._lock:
+            self._active_containers[execution_id] = container
+
+    def _untrack_container(self, execution_id: str) -> docker.models.containers.Container | None:
+        """Thread-safe container untracking. Returns the container if it was tracked."""
+        with self._lock:
+            return self._active_containers.pop(execution_id, None)
+
+    def _force_kill_container(self, execution_id: str) -> None:
+        """Force kill a container by execution_id (used on timeout)."""
+        container = self._untrack_container(execution_id)
+        if container:
+            try:
+                logger.warning("Force killing timed out gVisor container", execution_id=execution_id)
+                container.kill()
+                container.remove(force=True)
+            except docker.errors.NotFound:
+                pass  # Already removed
+            except Exception as e:
+                logger.error("Failed to force kill container", execution_id=execution_id, error=str(e))
 
     def _check_runtime(self) -> None:
         """Check if gVisor runtime is available."""
@@ -90,7 +118,7 @@ class GVisorBackend(SandboxBackend):
         self._check_runtime()
 
         execution_timeout = timeout or self.timeout
-        execution_id = str(uuid.uuid4())[:8]
+        execution_id = str(uuid.uuid4())[:EXECUTION_ID_LENGTH]
 
         # Create temp directories for shared files and output
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -136,6 +164,8 @@ class GVisorBackend(SandboxBackend):
                     timeout=execution_timeout + 5,
                 )
             except asyncio.TimeoutError:
+                # Force kill the container that's still running
+                self._force_kill_container(execution_id)
                 logger.warning(
                     "gVisor container execution timed out",
                     execution_id=execution_id,
@@ -175,7 +205,11 @@ class GVisorBackend(SandboxBackend):
         env: dict[str, str],
         timeout: int,
     ) -> dict:
-        """Run the container synchronously with gVisor runtime."""
+        """Run the container synchronously with gVisor runtime.
+
+        gVisor provides additional isolation at the kernel level, but we still
+        apply container-level security hardening for defense in depth.
+        """
         import time
 
         start_time = time.time()
@@ -196,9 +230,17 @@ class GVisorBackend(SandboxBackend):
                 detach=True,
                 stderr=True,
                 stdout=True,
+                # Security hardening options (defense in depth with gVisor)
+                user="nobody",  # Run as non-root user
+                read_only=True,  # Read-only root filesystem
+                security_opt=["no-new-privileges:true"],  # Prevent privilege escalation
+                cap_drop=["ALL"],  # Drop all Linux capabilities
+                tmpfs={"/tmp": "size=100M,mode=1777"},  # Writable /tmp in memory
+                pids_limit=100,  # Limit number of processes
             )
 
-            self._active_containers.add(container.id)
+            # Track container for potential timeout cleanup
+            self._track_container(execution_id, container)
 
             # Wait for container to finish
             result = container.wait(timeout=timeout)
@@ -244,10 +286,13 @@ class GVisorBackend(SandboxBackend):
             }
 
         finally:
+            # Untrack and remove container
+            self._untrack_container(execution_id)
             if container:
                 try:
                     container.remove(force=True)
-                    self._active_containers.discard(container.id)
+                except docker.errors.NotFound:
+                    pass  # Already removed (e.g., by force kill on timeout)
                 except Exception as e:
                     logger.warning(
                         "Failed to remove container",
@@ -257,16 +302,23 @@ class GVisorBackend(SandboxBackend):
 
     async def cleanup(self) -> None:
         """Clean up any active containers."""
-        for container_id in list(self._active_containers):
+        with self._lock:
+            containers_to_cleanup = list(self._active_containers.items())
+            self._active_containers.clear()
+
+        for execution_id, container in containers_to_cleanup:
             try:
-                container = self.client.containers.get(container_id)
+                container.kill()
                 container.remove(force=True)
-                logger.debug("Cleaned up container", container_id=container_id)
+                logger.debug("Cleaned up gVisor container", execution_id=execution_id)
             except docker.errors.NotFound:
-                pass
+                pass  # Already removed
             except Exception as e:
-                logger.warning("Failed to cleanup container", container_id=container_id, error=str(e))
-            self._active_containers.discard(container_id)
+                logger.warning(
+                    "Failed to cleanup container",
+                    execution_id=execution_id,
+                    error=str(e),
+                )
 
         if self._client:
             self._client.close()

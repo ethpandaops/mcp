@@ -19,7 +19,7 @@ Example usage:
     url = storage.upload("/output/chart.png")
 """
 
-from xatu import clickhouse, prometheus, loki, storage
+from . import clickhouse, prometheus, loki, storage
 
 __all__ = ["clickhouse", "prometheus", "loki", "storage"]
 __version__ = "0.1.0"

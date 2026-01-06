@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from mcp.server import Server
 from mcp.types import TextContent, Tool
 import structlog
 
@@ -12,21 +11,15 @@ from xatu_mcp.sandbox.base import SandboxBackend
 logger = structlog.get_logger()
 
 
-def register_execute_python(server: Server, sandbox: SandboxBackend, config: Config) -> None:
-    """Register the execute_python tool with the MCP server.
+def build_execute_python_tool() -> Tool:
+    """Build the execute_python tool definition.
 
-    Args:
-        server: The MCP server instance.
-        sandbox: The sandbox backend to use for execution.
-        config: Server configuration.
+    Returns:
+        Tool definition for execute_python.
     """
-
-    @server.list_tools()
-    async def list_tools() -> list[Tool]:
-        return [
-            Tool(
-                name="execute_python",
-                description="""Execute Python code in a sandboxed environment.
+    return Tool(
+        name="execute_python",
+        description="""Execute Python code in a sandboxed environment.
 
 The xatu library is pre-installed for querying Ethereum network data:
 
@@ -57,96 +50,110 @@ Available ClickHouse clusters:
 
 All output files should be written to /output/ directory.
 Data stays in the sandbox - Claude only sees stdout and file URLs.""",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "Python code to execute",
-                        },
-                        "timeout": {
-                            "type": "integer",
-                            "description": "Execution timeout in seconds (default: 60, max: 300)",
-                            "minimum": 1,
-                            "maximum": 300,
-                            "default": 60,
-                        },
-                    },
-                    "required": ["code"],
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python code to execute",
                 },
-            ),
-        ]
+                "timeout": {
+                    "type": "integer",
+                    "description": "Execution timeout in seconds (default: 60, max: 300)",
+                    "minimum": 1,
+                    "maximum": 300,
+                    "default": 60,
+                },
+            },
+            "required": ["code"],
+        },
+    )
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-        if name != "execute_python":
-            raise ValueError(f"Unknown tool: {name}")
 
-        code = arguments.get("code")
-        if not code:
-            raise ValueError("Code is required")
+async def handle_execute_python(
+    arguments: dict[str, Any],
+    sandbox: SandboxBackend,
+    config: Config,
+) -> list[TextContent]:
+    """Handle the execute_python tool call.
 
-        timeout = arguments.get("timeout", 60)
-        timeout = min(max(1, timeout), 300)  # Clamp to 1-300 seconds
+    Args:
+        arguments: Tool arguments containing 'code' and optional 'timeout'.
+        sandbox: The sandbox backend to use for execution.
+        config: Server configuration.
 
-        logger.info(
-            "Executing Python code",
-            code_length=len(code),
-            timeout=timeout,
-            backend=sandbox.name,
-        )
+    Returns:
+        List of TextContent with execution results.
 
-        # Build environment variables for the sandbox
-        env = _build_sandbox_env(config)
+    Raises:
+        ValueError: If required arguments are missing or invalid.
+    """
+    code = arguments.get("code")
+    if not code:
+        raise ValueError("code is required")
 
-        try:
-            result = await sandbox.execute(code=code, env=env, timeout=timeout)
-        except TimeoutError as e:
-            logger.warning("Execution timed out", timeout=timeout)
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Execution timed out after {timeout} seconds",
-                )
-            ]
-        except Exception as e:
-            logger.error("Execution failed", error=str(e))
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Execution error: {e}",
-                )
-            ]
+    timeout = arguments.get("timeout", 60)
+    if not isinstance(timeout, int) or timeout < 1 or timeout > 300:
+        raise ValueError("timeout must be an integer between 1 and 300 seconds")
 
-        # Build response
-        response_parts = []
+    logger.info(
+        "Executing Python code",
+        code_length=len(code),
+        timeout=timeout,
+        backend=sandbox.name,
+    )
 
-        if result.stdout:
-            response_parts.append(f"=== STDOUT ===\n{result.stdout}")
+    # Build environment variables for the sandbox
+    env = _build_sandbox_env(config)
 
-        if result.stderr:
-            response_parts.append(f"=== STDERR ===\n{result.stderr}")
-
-        if result.output_files:
-            files_list = "\n".join(f"  - {f}" for f in result.output_files)
-            response_parts.append(f"=== OUTPUT FILES ===\n{files_list}")
-
-        response_parts.append(f"=== EXIT CODE: {result.exit_code} ===")
-        response_parts.append(f"=== DURATION: {result.duration_seconds:.2f}s ===")
-
-        logger.info(
-            "Execution completed",
-            exit_code=result.exit_code,
-            duration=result.duration_seconds,
-            output_files=result.output_files,
-        )
-
+    try:
+        result = await sandbox.execute(code=code, env=env, timeout=timeout)
+    except TimeoutError:
+        logger.warning("Execution timed out", timeout=timeout)
         return [
             TextContent(
                 type="text",
-                text="\n\n".join(response_parts),
+                text=f"Execution timed out after {timeout} seconds",
             )
         ]
+    except Exception as e:
+        logger.error("Execution failed", error=str(e), exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=f"Execution error: {type(e).__name__}: {e}",
+            )
+        ]
+
+    # Build response
+    response_parts = []
+
+    if result.stdout:
+        response_parts.append(f"=== STDOUT ===\n{result.stdout}")
+
+    if result.stderr:
+        response_parts.append(f"=== STDERR ===\n{result.stderr}")
+
+    if result.output_files:
+        files_list = "\n".join(f"  - {f}" for f in result.output_files)
+        response_parts.append(f"=== OUTPUT FILES ===\n{files_list}")
+
+    response_parts.append(f"=== EXIT CODE: {result.exit_code} ===")
+    response_parts.append(f"=== DURATION: {result.duration_seconds:.2f}s ===")
+
+    logger.info(
+        "Execution completed",
+        exit_code=result.exit_code,
+        duration=result.duration_seconds,
+        output_files=result.output_files,
+    )
+
+    return [
+        TextContent(
+            type="text",
+            text="\n\n".join(response_parts),
+        )
+    ]
 
 
 def _build_sandbox_env(config: Config) -> dict[str, str]:
