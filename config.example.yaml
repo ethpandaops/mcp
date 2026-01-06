@@ -1,0 +1,115 @@
+# Xatu MCP Server Configuration
+# Copy this file to config.yaml and customize for your environment.
+# Environment variables can be substituted using ${VAR_NAME} syntax.
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  base_url: "http://localhost:8080"  # Used for OAuth callbacks
+
+# ClickHouse clusters configuration
+# Each cluster contains raw or aggregated Ethereum network data
+clickhouse:
+  # Production raw data cluster
+  xatu:
+    host: "clickhouse.xatu.ethpandaops.io"
+    port: 443
+    protocol: "https"
+    user: "${CLICKHOUSE_USER}"
+    password: "${CLICKHOUSE_PASSWORD}"
+    database: "default"
+    networks:
+      - mainnet
+      - sepolia
+      - holesky
+      - hoodi
+
+  # Experimental/devnet raw data cluster
+  xatu-experimental:
+    host: "clickhouse.xatu-experimental.ethpandaops.io"
+    port: 443
+    protocol: "https"
+    user: "${CLICKHOUSE_USER}"
+    password: "${CLICKHOUSE_PASSWORD}"
+    database: "default"
+    networks:
+      - pectra-devnet-6
+
+  # Aggregated/CBT tables cluster
+  xatu-cbt:
+    host: "clickhouse-cbt.xatu.ethpandaops.io"
+    port: 443
+    protocol: "https"
+    user: "${CLICKHOUSE_USER}"
+    password: "${CLICKHOUSE_PASSWORD}"
+    database: "default"
+    networks:
+      - mainnet
+      - sepolia
+      - holesky
+
+# Prometheus configuration (optional)
+# prometheus:
+#   url: "${PROMETHEUS_URL}"
+
+# Loki configuration (optional)
+# loki:
+#   url: "${LOKI_URL}"
+
+# Sandbox configuration
+sandbox:
+  # Backend: docker (local dev) | gvisor (production)
+  backend: docker
+  image: "xatu-mcp-sandbox:latest"
+  timeout: 60  # seconds
+  memory_limit: "2g"
+  cpu_limit: 1.0
+  network: "mcp-internal"
+
+# S3-compatible storage for output files
+storage:
+  endpoint: "${S3_ENDPOINT}"  # e.g., http://minio:9000 or https://xxx.r2.cloudflarestorage.com
+  access_key: "${S3_ACCESS_KEY}"
+  secret_key: "${S3_SECRET_KEY}"
+  bucket: "xatu-mcp-outputs"
+  region: "us-east-1"
+  public_url_prefix: "${S3_PUBLIC_URL}"  # e.g., https://outputs.example.com
+
+# Authentication configuration
+auth:
+  enabled: false  # Set to true to require authentication
+
+  # Skip auth for stdio transport (local development)
+  skip_for_stdio: true
+
+  # GitHub OAuth configuration (required when auth.enabled is true)
+  # github:
+  #   client_id: "${GITHUB_CLIENT_ID}"
+  #   client_secret: "${GITHUB_CLIENT_SECRET}"
+
+  # Organizations allowed to access the server
+  # allowed_orgs:
+  #   - "ethpandaops"
+  #   - "ethereum"
+
+  # Token configuration
+  # tokens:
+  #   access_token_ttl: 3600      # 1 hour
+  #   refresh_token_ttl: 2592000  # 30 days
+  #   issuer: "https://mcp.example.com"
+  #   secret_key: "${JWT_SECRET_KEY}"
+
+  # PostgreSQL database for session storage
+  # database_url: "${DATABASE_URL}"  # e.g., postgresql://user:pass@host:5432/xatu_mcp
+
+  # Rate limiting
+  # rate_limits:
+  #   requests_per_hour: 100
+
+# Observability configuration
+observability:
+  metrics_enabled: true
+  metrics_port: 9090
+
+  tracing_enabled: false
+  # otlp_endpoint: "${OTLP_ENDPOINT}"

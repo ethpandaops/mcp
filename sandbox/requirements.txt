@@ -1,0 +1,22 @@
+# Core data analysis libraries
+pandas>=2.0.0
+numpy>=1.24.0
+polars>=1.0.0
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.18.0
+
+# ClickHouse client
+clickhouse-connect>=0.7.0
+
+# HTTP client for Prometheus/Loki
+httpx>=0.27.0
+
+# S3 client
+boto3>=1.35.0
+
+# Utilities
+python-dateutil>=2.8.0
+pytz>=2024.1
