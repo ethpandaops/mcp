@@ -188,7 +188,10 @@ func (b *DockerBackend) executeEphemeral(ctx context.Context, req ExecuteRequest
 	}
 
 	// Build container configuration.
-	containerConfig, hostConfig := b.buildContainerConfig(sharedDir, outputDir, req.Env)
+	containerConfig, hostConfig, err := b.buildContainerConfig(sharedDir, outputDir, req.Env)
+	if err != nil {
+		return nil, fmt.Errorf("building container config: %w", err)
+	}
 
 	// Create execution context with timeout.
 	execCtx, cancel := context.WithTimeout(ctx, timeout+5*time.Second)
@@ -365,7 +368,10 @@ func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[stri
 	}
 
 	// Apply security configuration.
-	securityCfg := b.getSecurityConfig()
+	securityCfg, err := b.getSecurityConfig()
+	if err != nil {
+		return "", fmt.Errorf("getting security config: %w", err)
+	}
 	// For session containers, we need read-write root filesystem.
 	securityCfg.ReadonlyRootfs = false
 	securityCfg.ApplyToHostConfig(hostConfig)
@@ -631,7 +637,7 @@ func (b *DockerBackend) createExecutionDirs(executionID string) (string, error) 
 func (b *DockerBackend) buildContainerConfig(
 	sharedDir, outputDir string,
 	env map[string]string,
-) (*container.Config, *container.HostConfig) {
+) (*container.Config, *container.HostConfig, error) {
 	// Merge environment variables with defaults.
 	containerEnv := SandboxEnvDefaults()
 	for k, v := range env {
@@ -671,15 +677,19 @@ func (b *DockerBackend) buildContainerConfig(
 	}
 
 	// Apply security configuration.
-	securityCfg := b.getSecurityConfig()
+	securityCfg, err := b.getSecurityConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("getting security config: %w", err)
+	}
+
 	securityCfg.ApplyToHostConfig(hostConfig)
 
-	return containerConfig, hostConfig
+	return containerConfig, hostConfig, nil
 }
 
 // getSecurityConfig returns the security configuration for this backend.
 // Subclasses can override this to use different security settings.
-func (b *DockerBackend) getSecurityConfig() *SecurityConfig {
+func (b *DockerBackend) getSecurityConfig() (*SecurityConfig, error) {
 	return DefaultSecurityConfig(b.cfg.MemoryLimit, b.cfg.CPULimit)
 }
 

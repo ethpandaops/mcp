@@ -120,6 +120,6 @@ func getRuntimeNames(info system.Info) []string {
 
 // getSecurityConfig returns the gVisor security configuration.
 // This overrides the parent to use the gVisor runtime.
-func (b *GVisorBackend) getSecurityConfig() *SecurityConfig {
+func (b *GVisorBackend) getSecurityConfig() (*SecurityConfig, error) {
 	return GVisorSecurityConfig(b.cfg.MemoryLimit, b.cfg.CPULimit)
 }

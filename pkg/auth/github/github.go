@@ -148,9 +148,7 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*GitHubUser, 
 	// Get user organizations.
 	orgs, err := c.getUserOrganizations(ctx, accessToken)
 	if err != nil {
-		c.log.WithError(err).Warn("Failed to fetch user organizations")
-		// Continue without orgs - some users may not have org access.
-		orgs = nil
+		return nil, fmt.Errorf("fetching user organizations: %w", err)
 	}
 
 	user := &GitHubUser{

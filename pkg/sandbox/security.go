@@ -1,6 +1,8 @@
 package sandbox
 
 import (
+	"fmt"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/go-units"
@@ -31,11 +33,11 @@ type SecurityConfig struct {
 }
 
 // DefaultSecurityConfig returns the default security configuration for sandboxed execution.
-func DefaultSecurityConfig(memoryLimit string, cpuLimit float64) *SecurityConfig {
+// Returns an error if the memory limit cannot be parsed.
+func DefaultSecurityConfig(memoryLimit string, cpuLimit float64) (*SecurityConfig, error) {
 	memBytes, err := units.RAMInBytes(memoryLimit)
 	if err != nil {
-		// Fallback to 2GB if parsing fails.
-		memBytes = 2 * 1024 * 1024 * 1024
+		return nil, fmt.Errorf("invalid memory limit %q: %w", memoryLimit, err)
 	}
 
 	return &SecurityConfig{
@@ -53,15 +55,20 @@ func DefaultSecurityConfig(memoryLimit string, cpuLimit float64) *SecurityConfig
 		CPUPeriod:   100000,
 		TmpfsSize:   "100M",
 		Runtime:     "",
-	}
+	}, nil
 }
 
 // GVisorSecurityConfig returns security configuration for gVisor-based execution.
-func GVisorSecurityConfig(memoryLimit string, cpuLimit float64) *SecurityConfig {
-	cfg := DefaultSecurityConfig(memoryLimit, cpuLimit)
+// Returns an error if the memory limit cannot be parsed.
+func GVisorSecurityConfig(memoryLimit string, cpuLimit float64) (*SecurityConfig, error) {
+	cfg, err := DefaultSecurityConfig(memoryLimit, cpuLimit)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg.Runtime = "runsc"
 
-	return cfg
+	return cfg, nil
 }
 
 // ApplyToHostConfig applies security settings to a Docker HostConfig.

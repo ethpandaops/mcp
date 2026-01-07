@@ -71,8 +71,13 @@ def upload(local_path: str, remote_name: str | None = None) -> str:
     if remote_name is None:
         remote_name = path.name
 
-    # Generate a unique key using execution context (would be set by sandbox)
-    execution_id = os.environ.get("XATU_EXECUTION_ID", "default")
+    # Generate a unique key using execution context (set by sandbox)
+    execution_id = os.environ.get("XATU_EXECUTION_ID")
+    if not execution_id:
+        raise ValueError(
+            "XATU_EXECUTION_ID environment variable is required for uploads. "
+            "This should be set automatically by the sandbox."
+        )
     key = f"{execution_id}/{remote_name}"
 
     client = _get_client()

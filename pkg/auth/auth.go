@@ -96,7 +96,10 @@ func NewService(log logrus.FieldLogger, cfg config.AuthConfig, baseURL string) (
 	authMW := middleware.NewMiddleware(log, cfg, store, tokenSvc, baseURL)
 
 	// Create rate limiter.
-	rateLimiter := middleware.NewRateLimiter(log, cfg.RateLimits.RequestsPerHour)
+	rateLimiter, err := middleware.NewRateLimiter(log, cfg.RateLimits.RequestsPerHour)
+	if err != nil {
+		return nil, fmt.Errorf("creating rate limiter: %w", err)
+	}
 
 	s := &service{
 		log:          log,

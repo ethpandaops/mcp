@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -20,9 +21,10 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a new rate limiter.
 // requestsPerHour is the maximum requests per hour per user.
-func NewRateLimiter(log logrus.FieldLogger, requestsPerHour int) *RateLimiter {
+// Returns an error if requestsPerHour is invalid (<= 0).
+func NewRateLimiter(log logrus.FieldLogger, requestsPerHour int) (*RateLimiter, error) {
 	if requestsPerHour <= 0 {
-		requestsPerHour = 100 // default
+		return nil, fmt.Errorf("requestsPerHour must be positive, got %d", requestsPerHour)
 	}
 
 	// Convert requests per hour to rate per second.
@@ -39,7 +41,7 @@ func NewRateLimiter(log logrus.FieldLogger, requestsPerHour int) *RateLimiter {
 		log:   log.WithField("component", "rate_limiter"),
 		rate:  r,
 		burst: burst,
-	}
+	}, nil
 }
 
 // getLimiter gets or creates a rate limiter for the given key.

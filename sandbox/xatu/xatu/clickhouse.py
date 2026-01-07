@@ -11,17 +11,17 @@ Available clusters:
 Example:
     from xatu import clickhouse
 
-    # Query production data
-    df = clickhouse.query("mainnet", "SELECT * FROM beacon_api_eth_v1_events_block LIMIT 10")
+    # Query production data (cluster must be explicitly specified)
+    df = clickhouse.query("mainnet", "SELECT * FROM beacon_api_eth_v1_events_block LIMIT 10", cluster="xatu")
 
-    # Query with explicit cluster
+    # Query CBT tables
     df = clickhouse.query("mainnet", "SELECT * FROM cbt_slots", cluster="xatu-cbt")
 
     # List available tables
     tables = clickhouse.list_tables(cluster="xatu")
 
     # Get table schema
-    schema = clickhouse.describe_table("beacon_api_eth_v1_events_block")
+    schema = clickhouse.describe_table("beacon_api_eth_v1_events_block", cluster="xatu")
 """
 
 import os
@@ -63,40 +63,6 @@ _CLUSTERS = {
 
 # Cache for clients
 _clients: dict[str, clickhouse_connect.driver.Client] = {}
-
-
-def _get_cluster_for_network(network: str) -> str:
-    """Determine which cluster to use for a network.
-
-    Args:
-        network: Network name (e.g., "mainnet", "holesky").
-
-    Returns:
-        Cluster name.
-
-    Raises:
-        ValueError: If network is not found in any cluster.
-    """
-    for cluster_name, config in _CLUSTERS.items():
-        if network in config["networks"]:
-            # Found a cluster that supports this network - check if it's configured
-            if not config["host"]:
-                raise ValueError(
-                    f"Cluster '{cluster_name}' supports network '{network}' but is not configured. "
-                    f"Set {_get_env_var_name(cluster_name, 'HOST')} environment variable."
-                )
-            return cluster_name
-
-    # Network not found in any cluster
-    available_networks = []
-    for cluster_name, config in _CLUSTERS.items():
-        available_networks.extend(config["networks"])
-
-    raise ValueError(
-        f"Unknown network '{network}'. "
-        f"Available networks: {sorted(set(available_networks))}. "
-        f"Or specify cluster explicitly with cluster='xatu' parameter."
-    )
 
 
 def _get_env_var_name(cluster: str, suffix: str) -> str:
@@ -160,30 +126,34 @@ def _get_client(cluster: str) -> clickhouse_connect.driver.Client:
 def query(
     network: str,
     sql: str,
-    cluster: str = "auto",
+    cluster: str,
     parameters: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """Execute a SQL query and return results as a DataFrame.
 
     Args:
-        network: Network name (e.g., "mainnet", "holesky"). Used for auto cluster selection.
+        network: Network name (e.g., "mainnet", "holesky").
         sql: SQL query to execute.
-        cluster: Which cluster to query. Use "auto" to select based on network.
+        cluster: Which cluster to query. Must be explicitly specified.
             - "xatu": Raw production data
             - "xatu-experimental": Raw devnet data
             - "xatu-cbt": Aggregated/CBT tables
-            - "auto": Auto-select based on network (default)
         parameters: Query parameters for parameterized queries.
 
     Returns:
         DataFrame with query results.
 
+    Raises:
+        ValueError: If cluster is not specified or is invalid.
+
     Example:
-        >>> df = query("mainnet", "SELECT * FROM blocks LIMIT 10")
+        >>> df = query("mainnet", "SELECT * FROM blocks LIMIT 10", cluster="xatu")
         >>> df = query("mainnet", "SELECT * FROM cbt_slots", cluster="xatu-cbt")
     """
-    if cluster == "auto":
-        cluster = _get_cluster_for_network(network)
+    if not cluster:
+        raise ValueError(
+            f"cluster parameter is required. Available clusters: {list(_CLUSTERS.keys())}"
+        )
 
     client = _get_client(cluster)
 
@@ -193,7 +163,7 @@ def query(
 def query_raw(
     network: str,
     sql: str,
-    cluster: str = "auto",
+    cluster: str,
     parameters: dict[str, Any] | None = None,
 ) -> tuple[list[tuple], list[str]]:
     """Execute a SQL query and return raw results.
@@ -201,14 +171,22 @@ def query_raw(
     Args:
         network: Network name.
         sql: SQL query to execute.
-        cluster: Which cluster to query.
+        cluster: Which cluster to query. Must be explicitly specified.
+            - "xatu": Raw production data
+            - "xatu-experimental": Raw devnet data
+            - "xatu-cbt": Aggregated/CBT tables
         parameters: Query parameters.
 
     Returns:
         Tuple of (rows, column_names).
+
+    Raises:
+        ValueError: If cluster is not specified or is invalid.
     """
-    if cluster == "auto":
-        cluster = _get_cluster_for_network(network)
+    if not cluster:
+        raise ValueError(
+            f"cluster parameter is required. Available clusters: {list(_CLUSTERS.keys())}"
+        )
 
     client = _get_client(cluster)
 
