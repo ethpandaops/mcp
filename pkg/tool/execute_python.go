@@ -55,8 +55,32 @@ Available ClickHouse clusters:
 - "xatu-experimental": Devnet raw data
 - "xatu-cbt": Aggregated/CBT tables
 
+## Sessions (Persistent Workspaces)
+
+When sessions are enabled, the execution environment persists between calls:
+- Files written to /workspace/ persist across executions in the same session
+- The first execution returns a session_id in the response that can be reused
+- Sessions auto-expire after inactivity (default: 10 minutes)
+
+Example workflow:
+1. First call (no session_id): Query data and save to /workspace/
+2. Response includes session_id (e.g., "abc123")
+3. Second call with session_id="abc123": Files from step 1 are available
+
+` + "```python" + `
+# In first execution - save data to workspace
+df = clickhouse.query("mainnet", "SELECT * FROM ... LIMIT 1000")
+df.to_parquet('/workspace/data.parquet')
+print("Data saved!")
+
+# In second execution (pass session_id from first response) - data persists
+import pandas as pd
+df = pd.read_parquet('/workspace/data.parquet')  # File exists!
+print(f"Loaded {len(df)} rows")
+` + "```" + `
+
 All output files should be written to /output/ directory.
-Data stays in the sandbox - Claude only sees stdout and file URLs.`
+Data stays in the sandbox - Claude only sees stdout, file metadata, and URLs.`
 
 // NewExecutePythonTool creates the execute_python tool definition.
 func NewExecutePythonTool(
@@ -80,6 +104,10 @@ func NewExecutePythonTool(
 						"description": "Execution timeout in seconds (default: from config, max: 300)",
 						"minimum":     MinTimeout,
 						"maximum":     MaxTimeout,
+					},
+					"session_id": map[string]any{
+						"type":        "string",
+						"description": "Optional session ID to reuse a persistent container. If omitted, a new session is created (when sessions are enabled).",
 					},
 				},
 				Required: []string{"code"},
@@ -119,10 +147,14 @@ func newExecutePythonHandler(
 			), nil
 		}
 
+		// Extract optional session_id.
+		sessionID := request.GetString("session_id", "")
+
 		handlerLog.WithFields(logrus.Fields{
 			"code_length": len(code),
 			"timeout":     timeout,
 			"backend":     sandboxSvc.Name(),
+			"session_id":  sessionID,
 		}).Info("Executing Python code")
 
 		// Build environment variables for the sandbox.
@@ -130,9 +162,10 @@ func newExecutePythonHandler(
 
 		// Execute the code in the sandbox.
 		result, err := sandboxSvc.Execute(ctx, sandbox.ExecuteRequest{
-			Code:    code,
-			Env:     env,
-			Timeout: time.Duration(timeout) * time.Second,
+			Code:      code,
+			Env:       env,
+			Timeout:   time.Duration(timeout) * time.Second,
+			SessionID: sessionID,
 		})
 		if err != nil {
 			handlerLog.WithError(err).Error("Execution failed")
@@ -148,6 +181,7 @@ func newExecutePythonHandler(
 			"exit_code":    result.ExitCode,
 			"duration":     result.DurationSeconds,
 			"output_files": result.OutputFiles,
+			"session_id":   result.SessionID,
 		}).Info("Execution completed")
 
 		return CallToolSuccess(response), nil
@@ -179,11 +213,46 @@ func formatExecutionResult(result *sandbox.ExecutionResult) string {
 		)
 	}
 
+	// Include session info if available.
+	if result.SessionID != "" {
+		sessionInfo := fmt.Sprintf("=== SESSION ===\nSession ID: %s\nTTL Remaining: %s",
+			result.SessionID, result.SessionTTLRemaining.Round(time.Second))
+
+		if len(result.SessionFiles) > 0 {
+			sessionInfo += "\nWorkspace Files:"
+
+			for _, f := range result.SessionFiles {
+				sessionInfo += fmt.Sprintf("\n  - %s (%s, modified %s)",
+					f.Name, formatSize(f.Size), f.Modified.Format(time.RFC3339))
+			}
+		}
+
+		sessionInfo += "\n\nTip: Pass session_id in subsequent calls to reuse this session"
+		parts = append(parts, sessionInfo)
+	}
+
 	parts = append(parts, fmt.Sprintf("=== EXIT CODE: %d ===", result.ExitCode))
 	parts = append(parts, fmt.Sprintf("=== EXECUTION ID: %s ===", result.ExecutionID))
 	parts = append(parts, fmt.Sprintf("=== DURATION: %.2fs ===", result.DurationSeconds))
 
 	return strings.Join(parts, "\n\n")
+}
+
+// formatSize formats a byte size into a human-readable string.
+func formatSize(bytes int64) string {
+	const unit = 1024
+
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // buildSandboxEnv creates the environment variables map for the sandbox.

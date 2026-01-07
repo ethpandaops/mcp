@@ -64,7 +64,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	}
 
 	// Create tool registry and register tools
-	toolReg := b.buildToolRegistry(sandboxSvc)
+	toolReg := b.buildToolRegistry(sandboxSvc, b.cfg.Storage)
 
 	// Create resource registry and register resources
 	resourceReg := b.buildResourceRegistry(chClient)
@@ -92,7 +92,10 @@ func (b *Builder) buildClickHouse() (clickhouse.Client, error) {
 }
 
 // buildToolRegistry creates and populates the tool registry.
-func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service) tool.Registry {
+func (b *Builder) buildToolRegistry(
+	sandboxSvc sandbox.Service,
+	storageCfg *config.StorageConfig,
+) tool.Registry {
 	reg := tool.NewRegistry(b.log)
 
 	// Register execute_python tool
@@ -101,6 +104,19 @@ func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service) tool.Registry {
 	// Register file tools
 	reg.Register(tool.NewListOutputFilesTool(b.log))
 	reg.Register(tool.NewGetOutputFileTool(b.log))
+
+	// Register get_image tool if storage is configured
+	if storageCfg != nil && storageCfg.PublicURLPrefix != "" {
+		reg.Register(tool.NewGetImageTool(b.log, tool.GetImageConfig{
+			PublicURLPrefix:   storageCfg.PublicURLPrefix,
+			InternalURLPrefix: storageCfg.InternalURLPrefix,
+		}))
+
+		b.log.WithFields(logrus.Fields{
+			"public_url_prefix":   storageCfg.PublicURLPrefix,
+			"internal_url_prefix": storageCfg.InternalURLPrefix,
+		}).Debug("Registered get_image tool")
+	}
 
 	b.log.WithField("tool_count", len(reg.List())).Info("Tool registry built")
 

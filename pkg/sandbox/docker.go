@@ -29,15 +29,32 @@ type DockerBackend struct {
 	// activeContainers tracks running containers for cleanup on timeout/shutdown.
 	activeContainers map[string]string // executionID -> containerID
 	mu               sync.RWMutex
+
+	// sessionManager handles persistent session lifecycle.
+	sessionManager *SessionManager
 }
 
 // NewDockerBackend creates a new Docker sandbox backend.
 func NewDockerBackend(cfg config.SandboxConfig, log logrus.FieldLogger) (*DockerBackend, error) {
-	return &DockerBackend{
+	backend := &DockerBackend{
 		cfg:              cfg,
 		log:              log.WithField("component", "sandbox.docker"),
 		activeContainers: make(map[string]string, 16),
-	}, nil
+	}
+
+	// Create session manager with cleanup callback.
+	backend.sessionManager = NewSessionManager(
+		cfg.Sessions,
+		log,
+		func(ctx context.Context, containerID string) error {
+			if backend.client == nil {
+				return nil
+			}
+			return backend.forceRemoveContainer(ctx, containerID)
+		},
+	)
+
+	return backend, nil
 }
 
 // Name returns the backend name.
@@ -66,6 +83,11 @@ func (b *DockerBackend) Start(ctx context.Context) error {
 		return fmt.Errorf("ensuring sandbox image: %w", err)
 	}
 
+	// Start session manager if enabled.
+	if err := b.sessionManager.Start(ctx); err != nil {
+		return fmt.Errorf("starting session manager: %w", err)
+	}
+
 	b.log.WithField("image", b.cfg.Image).Info("Docker sandbox backend started")
 
 	return nil
@@ -75,12 +97,19 @@ func (b *DockerBackend) Start(ctx context.Context) error {
 func (b *DockerBackend) Stop(ctx context.Context) error {
 	b.log.Info("Stopping Docker sandbox backend")
 
+	// Stop session manager first (this will cleanup session containers).
+	if err := b.sessionManager.Stop(ctx); err != nil {
+		b.log.WithError(err).Warn("Failed to stop session manager")
+	}
+
 	// Kill all active containers.
 	b.mu.Lock()
 	containersToClean := make(map[string]string, len(b.activeContainers))
+
 	for k, v := range b.activeContainers {
 		containersToClean[k] = v
 	}
+
 	b.activeContainers = make(map[string]string, 16)
 	b.mu.Unlock()
 
@@ -111,14 +140,31 @@ func (b *DockerBackend) Execute(ctx context.Context, req ExecuteRequest) (*Execu
 		return nil, fmt.Errorf("docker client not initialized, call Start() first")
 	}
 
+	// If a session ID is provided, execute in the existing session.
+	if req.SessionID != "" {
+		return b.executeInSession(ctx, req)
+	}
+
+	// If sessions are enabled, create a new session.
+	if b.sessionManager.Enabled() {
+		return b.executeWithNewSession(ctx, req)
+	}
+
+	// Ephemeral execution (original behavior).
+	return b.executeEphemeral(ctx, req)
+}
+
+// executeEphemeral runs code in a new container that is destroyed after execution.
+func (b *DockerBackend) executeEphemeral(ctx context.Context, req ExecuteRequest) (*ExecutionResult, error) {
 	executionID := uuid.New().String()[:8]
 	timeout := req.Timeout
+
 	if timeout == 0 {
 		timeout = time.Duration(b.cfg.Timeout) * time.Second
 	}
 
 	log := b.log.WithField("execution_id", executionID)
-	log.Debug("Starting code execution")
+	log.Debug("Starting ephemeral code execution")
 
 	// Create temporary directories for this execution.
 	baseDir, err := b.createExecutionDirs(executionID)
@@ -159,6 +205,7 @@ func (b *DockerBackend) Execute(ctx context.Context, req ExecuteRequest) (*Execu
 
 	defer func() {
 		b.untrackContainer(executionID)
+
 		if err := b.forceRemoveContainer(context.Background(), containerID); err != nil {
 			log.WithError(err).Warn("Failed to remove container")
 		}
@@ -166,6 +213,7 @@ func (b *DockerBackend) Execute(ctx context.Context, req ExecuteRequest) (*Execu
 
 	// Start container.
 	startTime := time.Now()
+
 	if err := b.client.ContainerStart(execCtx, containerID, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("starting container: %w", err)
 	}
@@ -210,6 +258,335 @@ func (b *DockerBackend) Execute(ctx context.Context, req ExecuteRequest) (*Execu
 		Metrics:         metrics,
 		DurationSeconds: duration,
 	}, nil
+}
+
+// executeWithNewSession creates a new session container and executes code in it.
+func (b *DockerBackend) executeWithNewSession(ctx context.Context, req ExecuteRequest) (*ExecutionResult, error) {
+	timeout := req.Timeout
+	if timeout == 0 {
+		timeout = time.Duration(b.cfg.Timeout) * time.Second
+	}
+
+	log := b.log.WithField("mode", "new-session")
+	log.Debug("Creating new session container")
+
+	// Create the session container.
+	containerID, err := b.createSessionContainer(ctx, req.Env)
+	if err != nil {
+		return nil, fmt.Errorf("creating session container: %w", err)
+	}
+
+	// Register the session.
+	session, err := b.sessionManager.Create(containerID, req.Env)
+	if err != nil {
+		// Cleanup the container if session creation fails.
+		_ = b.forceRemoveContainer(ctx, containerID)
+		return nil, fmt.Errorf("creating session: %w", err)
+	}
+
+	log = log.WithField("session_id", session.ID)
+	log.Info("Created new session")
+
+	// Execute the code in the session.
+	result, err := b.execInContainer(ctx, session, req.Code, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("executing in session: %w", err)
+	}
+
+	// Populate session info.
+	result.SessionID = session.ID
+	result.SessionTTLRemaining = b.sessionManager.TTLRemaining(session.ID)
+	result.SessionFiles = b.collectSessionFiles(ctx, containerID)
+
+	return result, nil
+}
+
+// executeInSession executes code in an existing session container.
+func (b *DockerBackend) executeInSession(ctx context.Context, req ExecuteRequest) (*ExecutionResult, error) {
+	timeout := req.Timeout
+	if timeout == 0 {
+		timeout = time.Duration(b.cfg.Timeout) * time.Second
+	}
+
+	log := b.log.WithFields(logrus.Fields{
+		"mode":       "existing-session",
+		"session_id": req.SessionID,
+	})
+
+	// Get the session (this also updates LastUsed).
+	session, err := b.sessionManager.Get(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("getting session: %w", err)
+	}
+
+	log.Debug("Executing in existing session")
+
+	// Execute the code in the session.
+	result, err := b.execInContainer(ctx, session, req.Code, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("executing in session: %w", err)
+	}
+
+	// Populate session info.
+	result.SessionID = session.ID
+	result.SessionTTLRemaining = b.sessionManager.TTLRemaining(session.ID)
+	result.SessionFiles = b.collectSessionFiles(ctx, session.ContainerID)
+
+	return result, nil
+}
+
+// createSessionContainer creates a long-running container for session use.
+func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[string]string) (string, error) {
+	// Merge environment variables with defaults.
+	containerEnv := SandboxEnvDefaults()
+
+	for k, v := range env {
+		containerEnv[k] = v
+	}
+
+	// Convert map to slice for Docker API.
+	envSlice := make([]string, 0, len(containerEnv))
+	for k, v := range containerEnv {
+		envSlice = append(envSlice, k+"="+v)
+	}
+
+	// Session container runs sleep infinity and we exec into it.
+	containerConfig := &container.Config{
+		Image:      b.cfg.Image,
+		Cmd:        []string{"sleep", "infinity"},
+		Env:        envSlice,
+		User:       "nobody",
+		WorkingDir: "/workspace",
+	}
+
+	// Create workspace directory inside container.
+	hostConfig := &container.HostConfig{
+		NetworkMode: container.NetworkMode(b.cfg.Network),
+	}
+
+	// Apply security configuration.
+	securityCfg := b.getSecurityConfig()
+	// For session containers, we need read-write root filesystem.
+	securityCfg.ReadonlyRootfs = false
+	securityCfg.ApplyToHostConfig(hostConfig)
+
+	// Create container.
+	resp, err := b.client.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, "")
+	if err != nil {
+		return "", fmt.Errorf("creating container: %w", err)
+	}
+
+	// Start container.
+	if err := b.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		_ = b.forceRemoveContainer(ctx, resp.ID)
+		return "", fmt.Errorf("starting container: %w", err)
+	}
+
+	// Create /workspace and /output directories inside the container.
+	if err := b.createSessionDirs(ctx, resp.ID); err != nil {
+		_ = b.forceRemoveContainer(ctx, resp.ID)
+		return "", fmt.Errorf("creating session directories: %w", err)
+	}
+
+	return resp.ID, nil
+}
+
+// createSessionDirs creates the workspace and output directories inside a session container.
+func (b *DockerBackend) createSessionDirs(ctx context.Context, containerID string) error {
+	// Create directories and set permissions so nobody user can write.
+	// We need to run as root to create dirs in /, then chmod for nobody.
+	execConfig := container.ExecOptions{
+		Cmd:          []string{"sh", "-c", "mkdir -p /workspace /output && chmod 777 /workspace /output"},
+		AttachStdout: true,
+		AttachStderr: true,
+		User:         "root", // Run as root to create dirs and set permissions
+	}
+
+	execResp, err := b.client.ContainerExecCreate(ctx, containerID, execConfig)
+	if err != nil {
+		return fmt.Errorf("creating exec: %w", err)
+	}
+
+	if err := b.client.ContainerExecStart(ctx, execResp.ID, container.ExecStartOptions{}); err != nil {
+		return fmt.Errorf("starting exec: %w", err)
+	}
+
+	return nil
+}
+
+// execInContainer executes Python code inside a running session container.
+func (b *DockerBackend) execInContainer(
+	ctx context.Context,
+	session *Session,
+	code string,
+	timeout time.Duration,
+) (*ExecutionResult, error) {
+	executionID := uuid.New().String()[:8]
+	log := b.log.WithFields(logrus.Fields{
+		"execution_id": executionID,
+		"session_id":   session.ID,
+		"container_id": session.ContainerID,
+	})
+
+	// Create execution context with timeout.
+	execCtx, cancel := context.WithTimeout(ctx, timeout+5*time.Second)
+	defer cancel()
+
+	// Write the script to the container using docker exec with heredoc.
+	scriptPath := fmt.Sprintf("/tmp/script_%s.py", executionID)
+
+	writeCmd := []string{"sh", "-c", fmt.Sprintf("cat > %s << 'XATU_EOF'\n%s\nXATU_EOF", scriptPath, code)}
+
+	writeConfig := container.ExecOptions{
+		Cmd:          writeCmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	writeResp, err := b.client.ContainerExecCreate(execCtx, session.ContainerID, writeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("creating write exec: %w", err)
+	}
+
+	if err := b.client.ContainerExecStart(execCtx, writeResp.ID, container.ExecStartOptions{}); err != nil {
+		return nil, fmt.Errorf("starting write exec: %w", err)
+	}
+
+	// Execute the script.
+	startTime := time.Now()
+
+	execConfig := container.ExecOptions{
+		Cmd:          []string{"python", scriptPath},
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execResp, err := b.client.ContainerExecCreate(execCtx, session.ContainerID, execConfig)
+	if err != nil {
+		return nil, fmt.Errorf("creating exec: %w", err)
+	}
+
+	// Attach to get output.
+	attachResp, err := b.client.ContainerExecAttach(execCtx, execResp.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("attaching to exec: %w", err)
+	}
+	defer attachResp.Close()
+
+	// Read output with timeout.
+	var stdout, stderr bytes.Buffer
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := stdcopy.StdCopy(&stdout, &stderr, attachResp.Reader)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			log.WithError(err).Warn("Error reading exec output")
+		}
+	case <-execCtx.Done():
+		return nil, fmt.Errorf("execution timed out after %s", timeout)
+	}
+
+	// Get exit code.
+	inspectResp, err := b.client.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("inspecting exec: %w", err)
+	}
+
+	duration := time.Since(startTime).Seconds()
+
+	// Cleanup the script file.
+	cleanupCmd := []string{"rm", "-f", scriptPath}
+
+	cleanupConfig := container.ExecOptions{
+		Cmd: cleanupCmd,
+	}
+
+	cleanupResp, err := b.client.ContainerExecCreate(ctx, session.ContainerID, cleanupConfig)
+	if err == nil {
+		_ = b.client.ContainerExecStart(ctx, cleanupResp.ID, container.ExecStartOptions{})
+	}
+
+	log.WithFields(logrus.Fields{
+		"exit_code": inspectResp.ExitCode,
+		"duration":  duration,
+	}).Debug("Session execution completed")
+
+	return &ExecutionResult{
+		Stdout:          stdout.String(),
+		Stderr:          stderr.String(),
+		ExitCode:        inspectResp.ExitCode,
+		ExecutionID:     executionID,
+		DurationSeconds: duration,
+	}, nil
+}
+
+// collectSessionFiles lists files in the session's /workspace directory.
+func (b *DockerBackend) collectSessionFiles(ctx context.Context, containerID string) []SessionFile {
+	execConfig := container.ExecOptions{
+		Cmd:          []string{"find", "/workspace", "-maxdepth", "1", "-type", "f", "-printf", "%f\\t%s\\t%T@\\n"},
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execResp, err := b.client.ContainerExecCreate(ctx, containerID, execConfig)
+	if err != nil {
+		b.log.WithError(err).Debug("Failed to create exec for listing session files")
+		return nil
+	}
+
+	attachResp, err := b.client.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
+	if err != nil {
+		b.log.WithError(err).Debug("Failed to attach to exec for listing session files")
+		return nil
+	}
+	defer attachResp.Close()
+
+	var stdout, stderr bytes.Buffer
+
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, attachResp.Reader); err != nil {
+		b.log.WithError(err).Debug("Failed to read session files list")
+		return nil
+	}
+
+	// Parse the output.
+	files := make([]SessionFile, 0)
+	lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte("\n"))
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+
+		parts := bytes.Split(line, []byte("\t"))
+		if len(parts) != 3 {
+			continue
+		}
+
+		var size int64
+		var modTime float64
+
+		if _, err := fmt.Sscanf(string(parts[1]), "%d", &size); err != nil {
+			continue
+		}
+
+		if _, err := fmt.Sscanf(string(parts[2]), "%f", &modTime); err != nil {
+			continue
+		}
+
+		files = append(files, SessionFile{
+			Name:     string(parts[0]),
+			Size:     size,
+			Modified: time.Unix(int64(modTime), 0),
+		})
+	}
+
+	return files
 }
 
 // containerResult holds the output from container execution.

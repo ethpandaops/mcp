@@ -30,6 +30,9 @@ type ExecuteRequest struct {
 	Env map[string]string
 	// Timeout overrides the default execution timeout. If zero, uses the config default.
 	Timeout time.Duration
+	// SessionID is an optional session ID to reuse a persistent container.
+	// If empty, a new session is created. If provided, the existing session is reused.
+	SessionID string
 }
 
 // ExecutionResult contains the output from code execution.
@@ -48,6 +51,21 @@ type ExecutionResult struct {
 	Metrics map[string]any
 	// DurationSeconds is the wall-clock execution time.
 	DurationSeconds float64
+
+	// Session-related fields (only populated when sessions are enabled).
+	// SessionID is the session identifier. Can be used to reuse this session.
+	SessionID string
+	// SessionFiles lists files persisted in the session's /workspace directory.
+	SessionFiles []SessionFile
+	// SessionTTLRemaining is the time until this session expires from inactivity.
+	SessionTTLRemaining time.Duration
+}
+
+// SessionFile represents a file in the session workspace.
+type SessionFile struct {
+	Name     string    `json:"name"`
+	Size     int64     `json:"size"`
+	Modified time.Time `json:"modified"`
 }
 
 // BackendType represents the available sandbox backend types.

@@ -68,16 +68,40 @@ type SandboxConfig struct {
 	CPULimit       float64 `yaml:"cpu_limit"`
 	Network        string  `yaml:"network"`
 	HostSharedPath string  `yaml:"host_shared_path,omitempty"`
+
+	// Session configuration for persistent execution environments.
+	Sessions SessionConfig `yaml:"sessions"`
+}
+
+// SessionConfig holds configuration for persistent sandbox sessions.
+type SessionConfig struct {
+	// Enabled controls whether session support is available. Defaults to true.
+	Enabled *bool `yaml:"enabled,omitempty"`
+	// TTL is the duration after which an idle session is destroyed (since last use).
+	TTL time.Duration `yaml:"ttl"`
+	// MaxDuration is the maximum lifetime of a session regardless of activity.
+	MaxDuration time.Duration `yaml:"max_duration"`
+	// MaxSessions is the maximum number of concurrent sessions allowed.
+	MaxSessions int `yaml:"max_sessions"`
+}
+
+// IsEnabled returns whether sessions are enabled (defaults to true).
+func (c *SessionConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true // Default to enabled
+	}
+	return *c.Enabled
 }
 
 // StorageConfig holds S3 storage configuration.
 type StorageConfig struct {
-	Endpoint        string `yaml:"endpoint"`
-	AccessKey       string `yaml:"access_key"`
-	SecretKey       string `yaml:"secret_key"`
-	Bucket          string `yaml:"bucket"`
-	Region          string `yaml:"region"`
-	PublicURLPrefix string `yaml:"public_url_prefix,omitempty"`
+	Endpoint          string `yaml:"endpoint"`
+	AccessKey         string `yaml:"access_key"`
+	SecretKey         string `yaml:"secret_key"`
+	Bucket            string `yaml:"bucket"`
+	Region            string `yaml:"region"`
+	PublicURLPrefix   string `yaml:"public_url_prefix,omitempty"`
+	InternalURLPrefix string `yaml:"internal_url_prefix,omitempty"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -200,6 +224,19 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Sandbox.CPULimit == 0 {
 		cfg.Sandbox.CPULimit = 1.0
+	}
+
+	// Session defaults.
+	if cfg.Sandbox.Sessions.TTL == 0 {
+		cfg.Sandbox.Sessions.TTL = 10 * time.Minute
+	}
+
+	if cfg.Sandbox.Sessions.MaxDuration == 0 {
+		cfg.Sandbox.Sessions.MaxDuration = 4 * time.Hour
+	}
+
+	if cfg.Sandbox.Sessions.MaxSessions == 0 {
+		cfg.Sandbox.Sessions.MaxSessions = 10
 	}
 
 	if cfg.Auth.Tokens.AccessTokenTTL == 0 {

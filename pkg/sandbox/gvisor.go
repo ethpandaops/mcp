@@ -66,6 +66,11 @@ func (b *GVisorBackend) Start(ctx context.Context) error {
 		return fmt.Errorf("ensuring sandbox image: %w", err)
 	}
 
+	// Start session manager if enabled.
+	if err := b.sessionManager.Start(ctx); err != nil {
+		return fmt.Errorf("starting session manager: %w", err)
+	}
+
 	b.log.WithField("image", b.cfg.Image).Info("gVisor sandbox backend started")
 
 	return nil

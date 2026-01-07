@@ -127,5 +127,37 @@ func CallToolSuccess(text string) *mcp.CallToolResult {
 	}
 }
 
+// CallToolImage creates a successful image result for a tool call.
+// The data should be base64-encoded image bytes.
+func CallToolImage(data string, mimeType string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.ImageContent{
+				Type:     "image",
+				Data:     data,
+				MIMEType: mimeType,
+			},
+		},
+	}
+}
+
+// CallToolImageWithText creates a successful result with both an image and text.
+// The data should be base64-encoded image bytes.
+func CallToolImageWithText(data string, mimeType string, text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.ImageContent{
+				Type:     "image",
+				Data:     data,
+				MIMEType: mimeType,
+			},
+			mcp.TextContent{
+				Type: "text",
+				Text: text,
+			},
+		},
+	}
+}
+
 // Compile-time interface compliance check.
 var _ Registry = (*registry)(nil)
