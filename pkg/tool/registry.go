@@ -17,7 +17,6 @@ type Handler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 type Definition struct {
 	Tool    mcp.Tool
 	Handler Handler
-	Scope   string // Required OAuth scope (empty = no auth required).
 }
 
 // Registry manages tool registration and lookup.
@@ -26,9 +25,9 @@ type Registry interface {
 	Register(def Definition)
 	// List returns all registered tool definitions.
 	List() []mcp.Tool
-	// Get retrieves a tool handler and its required scope by name.
-	// Returns the handler, scope, and a boolean indicating if the tool exists.
-	Get(name string) (Handler, string, bool)
+	// Get retrieves a tool handler by name.
+	// Returns the handler and a boolean indicating if the tool exists.
+	Get(name string) (Handler, bool)
 	// Definitions returns all registered tool definitions.
 	Definitions() []Definition
 }
@@ -57,10 +56,7 @@ func (r *registry) Register(def Definition) {
 	}
 
 	r.tools[def.Tool.Name] = def
-	r.log.WithFields(logrus.Fields{
-		"tool":  def.Tool.Name,
-		"scope": def.Scope,
-	}).Debug("Registered tool")
+	r.log.WithField("tool", def.Tool.Name).Debug("Registered tool")
 }
 
 // List returns all registered tool definitions as MCP tools.
@@ -76,17 +72,17 @@ func (r *registry) List() []mcp.Tool {
 	return tools
 }
 
-// Get retrieves a tool handler and its required scope by name.
-func (r *registry) Get(name string) (Handler, string, bool) {
+// Get retrieves a tool handler by name.
+func (r *registry) Get(name string) (Handler, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	def, exists := r.tools[name]
 	if !exists {
-		return nil, "", false
+		return nil, false
 	}
 
-	return def.Handler, def.Scope, true
+	return def.Handler, true
 }
 
 // Definitions returns all registered tool definitions.

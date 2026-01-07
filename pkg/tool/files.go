@@ -14,8 +14,6 @@ const (
 	ListOutputFilesToolName = "list_output_files"
 	// GetOutputFileToolName is the name of the get_output_file tool.
 	GetOutputFileToolName = "get_output_file"
-	// ReadFilesScope is the required OAuth scope for file operations.
-	ReadFilesScope = "read_files"
 )
 
 // safeFilenamePattern validates filenames to prevent path traversal attacks.
@@ -59,7 +57,6 @@ func NewListOutputFilesTool(log logrus.FieldLogger) Definition {
 			},
 		},
 		Handler: newListOutputFilesHandler(log),
-		Scope:   ReadFilesScope,
 	}
 }
 
@@ -81,7 +78,6 @@ func NewGetOutputFileTool(log logrus.FieldLogger) Definition {
 			},
 		},
 		Handler: newGetOutputFileHandler(log),
-		Scope:   ReadFilesScope,
 	}
 }
 

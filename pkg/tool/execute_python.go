@@ -15,8 +15,6 @@ import (
 const (
 	// ExecutePythonToolName is the name of the execute_python tool.
 	ExecutePythonToolName = "execute_python"
-	// ExecutePythonScope is the required OAuth scope for this tool.
-	ExecutePythonScope = "execute_python"
 	// DefaultTimeout is the default execution timeout in seconds.
 	DefaultTimeout = 60
 	// MaxTimeout is the maximum allowed execution timeout in seconds.
@@ -114,7 +112,6 @@ func NewExecutePythonTool(
 			},
 		},
 		Handler: newExecutePythonHandler(log, sandboxSvc, cfg),
-		Scope:   ExecutePythonScope,
 	}
 }
 

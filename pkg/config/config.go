@@ -233,10 +233,18 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
+// MaxSandboxTimeout is the maximum allowed sandbox timeout in seconds.
+const MaxSandboxTimeout = 300
+
 // Validate validates the configuration.
 func (c *Config) Validate() error {
 	if c.Sandbox.Image == "" {
 		return errors.New("sandbox.image is required")
+	}
+
+	// Validate sandbox timeout is within bounds.
+	if c.Sandbox.Timeout > MaxSandboxTimeout {
+		return fmt.Errorf("sandbox.timeout cannot exceed %d seconds", MaxSandboxTimeout)
 	}
 
 	if c.Auth.Enabled {

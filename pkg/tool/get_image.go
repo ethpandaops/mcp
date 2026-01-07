@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -17,8 +18,6 @@ import (
 const (
 	// GetImageToolName is the name of the get_image tool.
 	GetImageToolName = "get_image"
-	// GetImageScope is the required OAuth scope for this tool.
-	GetImageScope = "read_files"
 	// maxImageSize is the maximum image size to download (10MB).
 	maxImageSize = 10 * 1024 * 1024
 	// imageDownloadTimeout is the timeout for downloading images.
@@ -77,7 +76,6 @@ func NewGetImageTool(log logrus.FieldLogger, cfg GetImageConfig) Definition {
 			},
 		},
 		Handler: newGetImageHandler(log, cfg),
-		Scope:   GetImageScope,
 	}
 }
 
@@ -141,12 +139,45 @@ func newGetImageHandler(log logrus.FieldLogger, cfg GetImageConfig) Handler {
 }
 
 // validateImageURL validates that the URL is from the allowed storage prefix.
-func validateImageURL(url string, allowedPrefix string) error {
+// This performs strict validation to prevent SSRF attacks:
+// 1. Parses the URL to validate structure
+// 2. Ensures the prefix ends with "/" to prevent prefix bypass (e.g., evil.com vs evil.com.attacker.com)
+// 3. Validates scheme is https or http
+func validateImageURL(rawURL string, allowedPrefix string) error {
 	if allowedPrefix == "" {
 		return fmt.Errorf("image fetching is not configured (no public_url_prefix set)")
 	}
 
-	if !strings.HasPrefix(url, allowedPrefix) {
+	// Ensure prefix ends with "/" to prevent bypass attacks.
+	// e.g., prefix "https://storage.example.com" would match "https://storage.example.com.evil.com"
+	// but "https://storage.example.com/" would not.
+	normalizedPrefix := allowedPrefix
+	if !strings.HasSuffix(normalizedPrefix, "/") {
+		normalizedPrefix += "/"
+	}
+
+	// Parse the URL to validate structure.
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Validate scheme.
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got: %s", parsedURL.Scheme)
+	}
+
+	// Reconstruct URL without query/fragment for prefix check.
+	// This ensures we're checking the actual path, not query params.
+	checkURL := fmt.Sprintf("%s://%s%s", parsedURL.Scheme, parsedURL.Host, parsedURL.Path)
+
+	// Also need trailing slash handling for the check URL.
+	if !strings.HasSuffix(checkURL, "/") && !strings.Contains(path.Base(parsedURL.Path), ".") {
+		checkURL += "/"
+	}
+
+	// Check if URL starts with normalized prefix.
+	if !strings.HasPrefix(checkURL+"/", normalizedPrefix) && !strings.HasPrefix(checkURL, normalizedPrefix) {
 		return fmt.Errorf(
 			"URL must start with the configured storage prefix: %s",
 			allowedPrefix,
@@ -177,24 +208,39 @@ func getMIMETypeFromURL(url string) (string, error) {
 	return mimeType, nil
 }
 
+// noRedirectClient is an HTTP client that does not follow redirects.
+// This prevents SSRF attacks where an attacker could redirect to internal URLs.
+var noRedirectClient = &http.Client{
+	Timeout: imageDownloadTimeout,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 // downloadImage fetches the image data from the given URL.
-func downloadImage(ctx context.Context, url string) ([]byte, error) {
+// It does not follow redirects to prevent SSRF attacks.
+func downloadImage(ctx context.Context, imageURL string) ([]byte, error) {
 	// Create a context with timeout.
 	ctx, cancel := context.WithTimeout(ctx, imageDownloadTimeout)
 	defer cancel()
 
 	// Create the request.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	// Execute the request.
-	resp, err := http.DefaultClient.Do(req)
+	// Execute the request without following redirects.
+	resp, err := noRedirectClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching URL: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Reject redirects - they could be used for SSRF.
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return nil, fmt.Errorf("redirects are not allowed (got status %d)", resp.StatusCode)
+	}
 
 	// Check status code.
 	if resp.StatusCode != http.StatusOK {

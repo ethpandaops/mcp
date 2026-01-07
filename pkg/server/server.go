@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/ethpandaops/xatu-mcp/internal/version"
 	"github.com/ethpandaops/xatu-mcp/pkg/auth"
+	"github.com/ethpandaops/xatu-mcp/pkg/clickhouse"
 	"github.com/ethpandaops/xatu-mcp/pkg/config"
 	"github.com/ethpandaops/xatu-mcp/pkg/observability"
 	"github.com/ethpandaops/xatu-mcp/pkg/resource"
@@ -45,6 +47,7 @@ type service struct {
 	toolRegistry     tool.Registry
 	resourceRegistry resource.Registry
 	sandbox          sandbox.Service
+	clickhouse       clickhouse.Client
 	auth             auth.SimpleService
 	mcpServer        *mcpserver.MCPServer
 	sseServer        *mcpserver.SSEServer
@@ -62,6 +65,7 @@ func NewService(
 	toolRegistry tool.Registry,
 	resourceRegistry resource.Registry,
 	sandboxSvc sandbox.Service,
+	clickhouseClient clickhouse.Client,
 	authSvc auth.SimpleService,
 ) Service {
 	return &service{
@@ -71,6 +75,7 @@ func NewService(
 		toolRegistry:     toolRegistry,
 		resourceRegistry: resourceRegistry,
 		sandbox:          sandboxSvc,
+		clickhouse:       clickhouseClient,
 		auth:             authSvc,
 		done:             make(chan struct{}),
 	}
@@ -84,8 +89,6 @@ func (s *service) Start(ctx context.Context) error {
 
 		return errors.New("server already running")
 	}
-
-	s.running = true
 	s.mu.Unlock()
 
 	s.log.WithFields(logrus.Fields{
@@ -98,6 +101,11 @@ func (s *service) Start(ctx context.Context) error {
 	if err := s.auth.Start(ctx); err != nil {
 		return fmt.Errorf("starting auth service: %w", err)
 	}
+
+	// Mark as running only after successful initialization.
+	s.mu.Lock()
+	s.running = true
+	s.mu.Unlock()
 
 	// Create the MCP server
 	s.mcpServer = mcpserver.NewMCPServer(
@@ -161,6 +169,13 @@ func (s *service) Stop() error {
 		s.log.WithError(err).Error("Failed to stop auth service")
 	}
 
+	// Stop the ClickHouse client.
+	if s.clickhouse != nil {
+		if err := s.clickhouse.Stop(); err != nil {
+			s.log.WithError(err).Error("Failed to stop ClickHouse client")
+		}
+	}
+
 	// Stop the sandbox service.
 	if s.sandbox != nil {
 		if err := s.sandbox.Stop(shutdownCtx); err != nil {
@@ -176,10 +191,7 @@ func (s *service) Stop() error {
 // registerTools registers all tools with the MCP server.
 func (s *service) registerTools() {
 	for _, def := range s.toolRegistry.Definitions() {
-		s.log.WithFields(logrus.Fields{
-			"tool":  def.Tool.Name,
-			"scope": def.Scope,
-		}).Debug("Registering tool with MCP server")
+		s.log.WithField("tool", def.Tool.Name).Debug("Registering tool with MCP server")
 
 		// Wrap the handler to add metrics
 		handler := s.wrapToolHandler(def.Tool.Name, def.Handler)
@@ -213,10 +225,14 @@ func (s *service) registerResources() {
 // wrapToolHandler wraps a tool handler with metrics.
 func (s *service) wrapToolHandler(toolName string, handler tool.Handler) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		timer := observability.ToolCallDuration.WithLabelValues(toolName)
-		defer timer.Observe(0) // We need a proper timer, just placeholder for now
+		startTime := time.Now()
 
 		result, err := handler(ctx, req)
+
+		// Record duration.
+		duration := time.Since(startTime).Seconds()
+		observability.ToolCallDuration.WithLabelValues(toolName).Observe(duration)
+
 		if err != nil {
 			observability.ToolCallsTotal.WithLabelValues(toolName, "error").Inc()
 
@@ -309,8 +325,10 @@ func (s *service) runSSE(ctx context.Context) error {
 	handler := s.buildHTTPHandler(s.sseServer)
 
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
@@ -360,8 +378,10 @@ func (s *service) runStreamableHTTP(ctx context.Context) error {
 	handler := s.buildHTTPHandler(s.sseServer)
 
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)

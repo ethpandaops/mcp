@@ -438,22 +438,36 @@ func (s *simpleService) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get and validate authorization code.
+	// We must check all validation conditions before marking as used to prevent
+	// replay attacks while still allowing valid requests.
 	s.codesMu.Lock()
 	issued, ok := s.codes[code]
-	if ok {
-		issued.Used = true
-	}
-	s.codesMu.Unlock()
 
 	if !ok {
+		s.codesMu.Unlock()
 		s.writeError(w, http.StatusBadRequest, "invalid_grant", "invalid authorization code")
+
 		return
 	}
 
-	if issued.Used || time.Since(issued.CreatedAt) > authCodeTTL {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "authorization code expired or used")
+	// Check if already used or expired before marking as used.
+	if issued.Used {
+		s.codesMu.Unlock()
+		s.writeError(w, http.StatusBadRequest, "invalid_grant", "authorization code already used")
+
 		return
 	}
+
+	if time.Since(issued.CreatedAt) > authCodeTTL {
+		s.codesMu.Unlock()
+		s.writeError(w, http.StatusBadRequest, "invalid_grant", "authorization code expired")
+
+		return
+	}
+
+	// Mark as used only after all checks pass.
+	issued.Used = true
+	s.codesMu.Unlock()
 
 	if issued.ClientID != clientID || issued.RedirectURI != redirectURI || issued.Resource != resource {
 		s.writeError(w, http.StatusBadRequest, "invalid_grant", "parameter mismatch")

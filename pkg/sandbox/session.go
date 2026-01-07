@@ -144,21 +144,64 @@ func (m *SessionManager) Get(sessionID string) (*Session, error) {
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	session, ok := m.sessions[sessionID]
 	if !ok {
+		m.mu.Unlock()
+
 		return nil, fmt.Errorf("session %s not found", sessionID)
 	}
 
 	// Check if session has exceeded max duration.
 	if time.Since(session.CreatedAt) > m.cfg.MaxDuration {
 		delete(m.sessions, sessionID)
+		containerID := session.ContainerID
+		m.mu.Unlock()
+
+		// Cleanup container asynchronously to avoid blocking.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := m.cleanupCallback(ctx, containerID); err != nil {
+				m.log.WithFields(logrus.Fields{
+					"session_id":   sessionID,
+					"container_id": containerID,
+					"error":        err,
+				}).Warn("Failed to cleanup expired session container")
+			}
+		}()
+
 		return nil, fmt.Errorf("session %s has expired (max duration exceeded)", sessionID)
+	}
+
+	// Check if session has exceeded TTL (idle timeout).
+	if time.Since(session.LastUsed) > m.cfg.TTL {
+		delete(m.sessions, sessionID)
+		containerID := session.ContainerID
+		m.mu.Unlock()
+
+		// Cleanup container asynchronously.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := m.cleanupCallback(ctx, containerID); err != nil {
+				m.log.WithFields(logrus.Fields{
+					"session_id":   sessionID,
+					"container_id": containerID,
+					"error":        err,
+				}).Warn("Failed to cleanup expired session container")
+			}
+		}()
+
+		return nil, fmt.Errorf("session %s has expired (idle timeout exceeded)", sessionID)
 	}
 
 	// Update last used timestamp.
 	session.LastUsed = time.Now()
+
+	m.mu.Unlock()
 
 	return session, nil
 }

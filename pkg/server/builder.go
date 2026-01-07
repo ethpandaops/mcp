@@ -64,6 +64,16 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		return nil, fmt.Errorf("building clickhouse client: %w", err)
 	}
 
+	// Start the ClickHouse client to initialize the HTTP client
+	if err := chClient.Start(ctx); err != nil {
+		// Clean up sandbox on failure
+		_ = sandboxSvc.Stop(ctx)
+
+		return nil, fmt.Errorf("starting clickhouse client: %w", err)
+	}
+
+	b.log.Info("ClickHouse client started")
+
 	// Create tool registry and register tools
 	toolReg := b.buildToolRegistry(sandboxSvc, b.cfg.Storage)
 
@@ -73,11 +83,13 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	// Create auth service
 	authSvc, err := b.buildAuth()
 	if err != nil {
+		_ = chClient.Stop()
 		_ = sandboxSvc.Stop(ctx)
+
 		return nil, fmt.Errorf("building auth service: %w", err)
 	}
 
-	// Create and return the server service (sandbox is passed for lifecycle management)
+	// Create and return the server service (sandbox and clickhouse are passed for lifecycle management)
 	return NewService(
 		b.log,
 		b.cfg.Server,
@@ -85,6 +97,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		toolReg,
 		resourceReg,
 		sandboxSvc,
+		chClient,
 		authSvc,
 	), nil
 }
@@ -176,59 +189,6 @@ func (b *Builder) buildResourceRegistry(chClient clickhouse.Client) resource.Reg
 	}).Info("Resource registry built")
 
 	return reg
-}
-
-// buildSandboxEnv builds the environment variables for sandbox execution.
-func (b *Builder) buildSandboxEnv() map[string]string {
-	env := make(map[string]string, 20)
-
-	// Add ClickHouse cluster configurations
-	if b.cfg.ClickHouse.Xatu != nil {
-		b.addClusterEnv(env, "XATU", b.cfg.ClickHouse.Xatu)
-	}
-
-	if b.cfg.ClickHouse.XatuExperimental != nil {
-		b.addClusterEnv(env, "XATU_EXPERIMENTAL", b.cfg.ClickHouse.XatuExperimental)
-	}
-
-	if b.cfg.ClickHouse.XatuCBT != nil {
-		b.addClusterEnv(env, "XATU_CBT", b.cfg.ClickHouse.XatuCBT)
-	}
-
-	// Add Prometheus configuration
-	if b.cfg.Prometheus != nil && b.cfg.Prometheus.URL != "" {
-		env["XATU_PROMETHEUS_URL"] = b.cfg.Prometheus.URL
-	}
-
-	// Add Loki configuration
-	if b.cfg.Loki != nil && b.cfg.Loki.URL != "" {
-		env["XATU_LOKI_URL"] = b.cfg.Loki.URL
-	}
-
-	// Add S3 storage configuration
-	if b.cfg.Storage != nil {
-		env["XATU_S3_ENDPOINT"] = b.cfg.Storage.Endpoint
-		env["XATU_S3_ACCESS_KEY"] = b.cfg.Storage.AccessKey
-		env["XATU_S3_SECRET_KEY"] = b.cfg.Storage.SecretKey
-		env["XATU_S3_BUCKET"] = b.cfg.Storage.Bucket
-		env["XATU_S3_REGION"] = b.cfg.Storage.Region
-
-		if b.cfg.Storage.PublicURLPrefix != "" {
-			env["XATU_S3_PUBLIC_URL_PREFIX"] = b.cfg.Storage.PublicURLPrefix
-		}
-	}
-
-	return env
-}
-
-// addClusterEnv adds environment variables for a ClickHouse cluster.
-func (b *Builder) addClusterEnv(env map[string]string, prefix string, cluster *config.ClusterConfig) {
-	env[prefix+"_CLICKHOUSE_HOST"] = cluster.Host
-	env[prefix+"_CLICKHOUSE_PORT"] = fmt.Sprintf("%d", cluster.Port)
-	env[prefix+"_CLICKHOUSE_PROTOCOL"] = cluster.Protocol
-	env[prefix+"_CLICKHOUSE_USER"] = cluster.User
-	env[prefix+"_CLICKHOUSE_PASSWORD"] = cluster.Password
-	env[prefix+"_CLICKHOUSE_DATABASE"] = cluster.Database
 }
 
 // clusterProviderAdapter adapts clickhouse.Client to resource.ClusterProvider.

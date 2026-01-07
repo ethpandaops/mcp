@@ -187,8 +187,16 @@ func (b *DockerBackend) executeEphemeral(ctx context.Context, req ExecuteRequest
 		return nil, fmt.Errorf("writing script file: %w", err)
 	}
 
+	// Inject execution ID into environment for storage.upload() to use.
+	env := req.Env
+	if env == nil {
+		env = make(map[string]string)
+	}
+
+	env["XATU_EXECUTION_ID"] = executionID
+
 	// Build container configuration.
-	containerConfig, hostConfig, err := b.buildContainerConfig(sharedDir, outputDir, req.Env)
+	containerConfig, hostConfig, err := b.buildContainerConfig(sharedDir, outputDir, env)
 	if err != nil {
 		return nil, fmt.Errorf("building container config: %w", err)
 	}
@@ -458,11 +466,11 @@ func (b *DockerBackend) execInContainer(
 		return nil, fmt.Errorf("starting write exec: %w", err)
 	}
 
-	// Execute the script.
+	// Execute the script with XATU_EXECUTION_ID env var for storage.upload().
 	startTime := time.Now()
 
 	execConfig := container.ExecOptions{
-		Cmd:          []string{"python", scriptPath},
+		Cmd:          []string{"sh", "-c", fmt.Sprintf("XATU_EXECUTION_ID=%s python %s", executionID, scriptPath)},
 		AttachStdout: true,
 		AttachStderr: true,
 	}
