@@ -14,12 +14,13 @@ import (
 
 // Config is the main configuration structure.
 type Config struct {
-	Server        ServerConfig        `yaml:"server"`
-	Grafana       GrafanaConfig       `yaml:"grafana"`
-	Auth          AuthConfig          `yaml:"auth"`
-	Sandbox       SandboxConfig       `yaml:"sandbox"`
-	Storage       *StorageConfig      `yaml:"storage,omitempty"`
-	Observability ObservabilityConfig `yaml:"observability"`
+	Server          ServerConfig          `yaml:"server"`
+	Grafana         GrafanaConfig         `yaml:"grafana"`
+	Auth            AuthConfig            `yaml:"auth"`
+	Sandbox         SandboxConfig         `yaml:"sandbox"`
+	Storage         *StorageConfig        `yaml:"storage,omitempty"`
+	Observability   ObservabilityConfig   `yaml:"observability"`
+	SchemaDiscovery SchemaDiscoveryConfig `yaml:"schema_discovery"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -62,7 +63,54 @@ type GrafanaConfig struct {
 
 	// DatasourceUIDs optionally restricts which datasources are available.
 	// If empty, all discovered datasources of supported types are used.
+	// Deprecated: Use Datasources instead for more control.
 	DatasourceUIDs []string `yaml:"datasource_uids,omitempty"`
+
+	// Datasources configures which datasources are available and their descriptions.
+	// If specified, only these datasources are exposed (supersedes DatasourceUIDs).
+	Datasources []DatasourceConfig `yaml:"datasources,omitempty"`
+}
+
+// DatasourceConfig configures a single datasource with optional description.
+type DatasourceConfig struct {
+	// UID is the Grafana datasource UID (required).
+	UID string `yaml:"uid"`
+
+	// Description provides context about this datasource for LLM consumption.
+	// Should include usage guidelines, common labels/filters, and best practices.
+	Description string `yaml:"description,omitempty"`
+}
+
+// SchemaDiscoveryConfig holds configuration for ClickHouse schema discovery.
+type SchemaDiscoveryConfig struct {
+	// Enabled controls whether schema discovery is active. Defaults to true if datasources are configured.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// RefreshInterval is the duration between schema refresh cycles. Defaults to 15 minutes.
+	RefreshInterval time.Duration `yaml:"refresh_interval,omitempty"`
+
+	// Datasources lists the ClickHouse datasources to discover schemas from.
+	// Each datasource must specify both the Grafana datasource UID and the cluster name.
+	Datasources []DatasourceMapping `yaml:"datasources"`
+}
+
+// DatasourceMapping maps a Grafana datasource UID to a cluster name.
+type DatasourceMapping struct {
+	// UID is the Grafana datasource UID (e.g., "PDF61E9E97939C7ED").
+	UID string `yaml:"uid"`
+
+	// Cluster is the logical cluster name (e.g., "xatu", "xatu-cbt").
+	Cluster string `yaml:"cluster"`
+}
+
+// IsEnabled returns whether schema discovery is enabled.
+// Defaults to true if at least one datasource is configured.
+func (c *SchemaDiscoveryConfig) IsEnabled() bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+
+	return len(c.Datasources) > 0
 }
 
 // SandboxConfig holds sandbox execution configuration.
@@ -233,6 +281,11 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Observability.MetricsPort == 0 {
 		cfg.Observability.MetricsPort = 9090
+	}
+
+	// Schema discovery defaults.
+	if cfg.SchemaDiscovery.RefreshInterval == 0 {
+		cfg.SchemaDiscovery.RefreshInterval = 15 * time.Minute
 	}
 }
 

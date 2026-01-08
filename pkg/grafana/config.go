@@ -19,7 +19,21 @@ type Config struct {
 
 	// DatasourceUIDs optionally restricts which datasources are available.
 	// If empty, all discovered datasources of supported types are used.
+	// Deprecated: Use Datasources instead for more control.
 	DatasourceUIDs []string `yaml:"datasource_uids,omitempty"`
+
+	// Datasources configures which datasources are available and their descriptions.
+	// If specified, only these datasources are exposed (supersedes DatasourceUIDs).
+	Datasources []DatasourceConfig `yaml:"datasources,omitempty"`
+}
+
+// DatasourceConfig configures a single datasource with optional description.
+type DatasourceConfig struct {
+	// UID is the Grafana datasource UID (required).
+	UID string `yaml:"uid"`
+
+	// Description provides context about this datasource for LLM consumption.
+	Description string `yaml:"description,omitempty"`
 }
 
 // Validate validates the Grafana configuration.

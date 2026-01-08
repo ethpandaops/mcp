@@ -85,12 +85,13 @@ var _ Client = (*client)(nil)
 
 // client is the HTTP-based implementation of the Client interface.
 type client struct {
-	log         logrus.FieldLogger
-	cfg         *Config
-	httpClient  *http.Client
-	datasources map[string]*Datasource
-	allowedUIDs map[string]struct{}
-	mu          sync.RWMutex
+	log          logrus.FieldLogger
+	cfg          *Config
+	httpClient   *http.Client
+	datasources  map[string]*Datasource
+	allowedUIDs  map[string]struct{}
+	descriptions map[string]string // UID -> Description from config
+	mu           sync.RWMutex
 }
 
 // QueryResult represents the result of a Grafana query.
@@ -118,15 +119,30 @@ type DataField struct {
 // NewClient creates a new Grafana client.
 // The client must be started with Start() before use.
 func NewClient(log logrus.FieldLogger, cfg *Config) Client {
-	allowedUIDs := make(map[string]struct{}, len(cfg.DatasourceUIDs))
-	for _, uid := range cfg.DatasourceUIDs {
-		allowedUIDs[uid] = struct{}{}
+	allowedUIDs := make(map[string]struct{})
+	descriptions := make(map[string]string)
+
+	// Prefer new Datasources config over legacy DatasourceUIDs
+	if len(cfg.Datasources) > 0 {
+		for _, ds := range cfg.Datasources {
+			allowedUIDs[ds.UID] = struct{}{}
+
+			if ds.Description != "" {
+				descriptions[ds.UID] = ds.Description
+			}
+		}
+	} else {
+		// Fall back to legacy DatasourceUIDs (no descriptions)
+		for _, uid := range cfg.DatasourceUIDs {
+			allowedUIDs[uid] = struct{}{}
+		}
 	}
 
 	return &client{
-		log:         log.WithField("component", "grafana"),
-		cfg:         cfg,
-		allowedUIDs: allowedUIDs,
+		log:          log.WithField("component", "grafana"),
+		cfg:          cfg,
+		allowedUIDs:  allowedUIDs,
+		descriptions: descriptions,
 	}
 }
 
@@ -214,18 +230,25 @@ func (c *client) discoverDatasources(ctx context.Context) error {
 		}
 
 		ds := &Datasource{
-			UID:      raw.UID,
-			Name:     raw.Name,
-			Type:     raw.Type,
-			TypeNorm: typeNorm,
+			UID:         raw.UID,
+			Name:        raw.Name,
+			Type:        raw.Type,
+			TypeNorm:    typeNorm,
+			Description: c.descriptions[raw.UID], // Apply description from config
 		}
 		c.datasources[raw.UID] = ds
 
-		c.log.WithFields(logrus.Fields{
+		logFields := logrus.Fields{
 			"uid":  ds.UID,
 			"name": ds.Name,
 			"type": ds.TypeNorm,
-		}).Debug("Discovered datasource")
+		}
+
+		if ds.Description != "" {
+			logFields["has_description"] = true
+		}
+
+		c.log.WithFields(logFields).Debug("Discovered datasource")
 	}
 
 	return nil

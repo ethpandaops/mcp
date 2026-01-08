@@ -306,3 +306,24 @@ func RegisterExamplesResources(log logrus.FieldLogger, reg Registry) {
 
 	log.Debug("Registered examples resources")
 }
+
+// GetQueryExamples returns a copy of the query examples map.
+// This allows tools to search through examples without modifying them.
+func GetQueryExamples() map[string]QueryCategory {
+	result := make(map[string]QueryCategory, len(queryExamples))
+	for k, v := range queryExamples {
+		result[k] = v
+	}
+
+	return result
+}
+
+// GetQueryCategories returns a list of available query category keys.
+func GetQueryCategories() []string {
+	categories := make([]string, 0, len(queryExamples))
+	for k := range queryExamples {
+		categories = append(categories, k)
+	}
+
+	return categories
+}

@@ -15,12 +15,25 @@ grafana:
   service_token: "${GRAFANA_SERVICE_TOKEN}"  # Service account token with datasource:read and datasource:query permissions
   timeout: 120  # seconds
 
-  # Optional: limit which datasources are exposed
-  # If empty, all accessible datasources are available
-  # datasource_uids:
-  #   - "clickhouse-xatu"
-  #   - "prometheus-main"
-  #   - "loki-main"
+  # Datasources configuration with descriptions for LLM context
+  # If specified, only these datasources are exposed
+  # Each datasource can have a description that provides context for the LLM
+  datasources:
+    - uid: "your-clickhouse-uid"
+      description: |
+        ClickHouse database containing Xatu data.
+        Always filter by partition key to avoid full table scans.
+        Use CTEs for distributed queries. Avoid global joins.
+
+    - uid: "your-loki-uid"
+      description: |
+        Loki cluster for container logs.
+        Must filter by label (e.g., ingress_user, container, pod, namespace).
+
+    - uid: "your-prometheus-uid"
+      description: |
+        Prometheus/VictoriaMetrics for metrics.
+        Common labels: ingress_user, container, pod, namespace.
 
 # Sandbox configuration
 sandbox:
@@ -75,3 +88,18 @@ observability:
 
   tracing_enabled: false
   # otlp_endpoint: "${OTLP_ENDPOINT}"
+
+# ClickHouse schema discovery configuration
+# Discovers table schemas from configured ClickHouse datasources via Grafana.
+# Each datasource must be explicitly configured with its Grafana UID and cluster name.
+schema_discovery:
+  # enabled: true  # Defaults to true if datasources are configured
+  refresh_interval: 15m  # How often to refresh schema cache
+
+  # Datasources to discover schemas from
+  # Each entry maps a Grafana datasource UID to a logical cluster name
+  datasources:
+    - uid: "your-clickhouse-datasource-uid"
+      cluster: "xatu"
+    - uid: "your-clickhouse-cbt-datasource-uid"
+      cluster: "xatu-cbt"
