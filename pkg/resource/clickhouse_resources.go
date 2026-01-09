@@ -27,14 +27,12 @@ type ClusterTablesSummary struct {
 	LastUpdated   string          `json:"last_updated"`
 }
 
-// TableSummary is a brief overview of a table.
+// TableSummary is a compact overview of a table for the list view.
+// Use clickhouse://tables/{table_name} for detailed schema including networks.
 type TableSummary struct {
-	Name          string   `json:"name"`
-	ColumnCount   int      `json:"column_count"`
-	Networks      []string `json:"networks,omitempty"`
-	HasNetworkCol bool     `json:"has_network_column"`
-	Comment       string   `json:"comment,omitempty"`
-	Engine        string   `json:"engine,omitempty"`
+	Name          string `json:"name"`
+	ColumnCount   int    `json:"column_count"`
+	HasNetworkCol bool   `json:"has_network_column"`
 }
 
 // TableDetailResponse is the response for clickhouse://tables/{table_name}.
@@ -114,10 +112,7 @@ func createTablesListHandler(client ClickHouseSchemaClient) ReadHandler {
 				tableSummary := &TableSummary{
 					Name:          schema.Name,
 					ColumnCount:   len(schema.Columns),
-					Networks:      schema.Networks,
 					HasNetworkCol: schema.HasNetworkCol,
-					Comment:       schema.Comment,
-					Engine:        schema.Engine,
 				}
 
 				summary.Tables = append(summary.Tables, tableSummary)

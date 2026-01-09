@@ -50,6 +50,7 @@ class ToolCallRecord:
     input: dict[str, Any]
     result: Any | None = None
     duration_ms: int = 0
+    is_error: bool = False
 
 
 @dataclass
@@ -146,16 +147,47 @@ class XatuAgent:
         """Hook to record tool results after execution."""
         if self._tool_calls:
             duration = int((time.time() - self._current_tool_start) * 1000)
-            self._tool_calls[-1].result = input_data.get("tool_response")
+
+            # Debug: log all keys in input_data to understand SDK structure
+            if self.settings.verbose and self.settings.log_tool_calls:
+                print(f"         [DEBUG] PostToolUse keys: {list(input_data.keys())}")
+
+            # Extract result from various possible fields
+            # The Claude Agent SDK may put the result in different places
+            result = (
+                input_data.get("tool_response")
+                or input_data.get("result")
+                or input_data.get("content")
+                or input_data.get("output")
+            )
+
+            # Check if this is an error response
+            is_error = input_data.get("is_error", False) or input_data.get(
+                "isError", False
+            )
+
+            # If result is still None, check if there's error content
+            if result is None and is_error:
+                result = input_data.get("error") or input_data.get("error_message")
+
+            # If we still have no result, capture the full input_data for debugging
+            if result is None and input_data:
+                # Filter out None values and capture what we have
+                non_null_data = {k: v for k, v in input_data.items() if v is not None}
+                if non_null_data:
+                    result = non_null_data
+
+            self._tool_calls[-1].result = result
             self._tool_calls[-1].duration_ms = duration
+            self._tool_calls[-1].is_error = is_error
 
             if self.settings.verbose and self.settings.log_tool_calls:
-                result = input_data.get("tool_response", "")
                 # Truncate long results
-                result_str = str(result)
+                result_str = str(result) if result else "(no result)"
                 if len(result_str) > 500:
                     result_str = result_str[:500] + "..."
-                print(f"         Result: {result_str}")
+                error_marker = " [ERROR]" if is_error else ""
+                print(f"         Result{error_marker}: {result_str}")
                 print(f"         Duration: {duration}ms")
 
         return {}

@@ -22,39 +22,31 @@ const (
 
 	// MaxSearchLimit is the maximum number of results allowed.
 	MaxSearchLimit = 50
+
+	// QueryPreviewMaxLength is the maximum length for query preview.
+	QueryPreviewMaxLength = 150
+
+	// QueryPreviewMaxLines is the maximum number of lines for query preview.
+	QueryPreviewMaxLines = 3
 )
 
 // searchExamplesDescription describes the search_examples tool.
-const searchExamplesDescription = `Search through ClickHouse query examples by keyword, regex pattern, or category.
+const searchExamplesDescription = `Search ClickHouse query examples by keyword or regex.
 
-⚠️ TIP: Read xatu://getting-started resource for an overview of available tables and required filters.
-Always search for examples BEFORE writing queries - they show correct table/column names and filters.
-
-Searches across:
-- Example names
-- Example descriptions
-- Query content (SQL)
-- Category names and descriptions
-
-Returns matching examples with their full context including category information.
+Returns matching examples with truncated query previews. Read examples://queries for full SQL.
 
 Examples:
-- search_examples(query="attestation") - Find all attestation-related examples
-- search_examples(query="block_events", category="block_events") - Search within a category
-- search_examples(query="slot.*propagation") - Regex search for patterns
-- search_examples(query="blob", limit=5) - Limit results
-
-If the regex pattern is invalid, it will be treated as a literal string search.`
+- search_examples(query="block") - Find block-related examples
+- search_examples(query="validator", category="validators") - Filter by category`
 
 // SearchExampleResult represents a single matching example with category context.
 type SearchExampleResult struct {
-	CategoryKey   string   `json:"category_key"`
-	CategoryName  string   `json:"category_name"`
-	ExampleName   string   `json:"example_name"`
-	Description   string   `json:"description"`
-	Query         string   `json:"query"`
-	Cluster       string   `json:"cluster"`
-	MatchedFields []string `json:"matched_fields"`
+	CategoryKey  string `json:"category_key"`
+	CategoryName string `json:"category_name"`
+	ExampleName  string `json:"example_name"`
+	Description  string `json:"description"`
+	QueryPreview string `json:"query_preview"`
+	Cluster      string `json:"cluster"`
 }
 
 // SearchExamplesResponse is the complete search response.
@@ -197,6 +189,28 @@ func compileSearchPattern(query string, caseSensitive bool) (*regexp.Regexp, err
 	return re, nil
 }
 
+// truncateQuery truncates a SQL query to a preview suitable for search results.
+// Returns first few lines up to maxLines and maxLength.
+func truncateQuery(query string, maxLines, maxLength int) string {
+	lines := strings.Split(strings.TrimSpace(query), "\n")
+
+	// Take first maxLines lines
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+
+	result := strings.Join(lines, "\n")
+
+	// Truncate to maxLength
+	if len(result) > maxLength {
+		result = result[:maxLength] + "..."
+	} else if len(strings.Split(strings.TrimSpace(query), "\n")) > maxLines {
+		result += "..."
+	}
+
+	return result
+}
+
 // searchExamples searches through examples and returns matching results.
 func searchExamples(
 	pattern *regexp.Regexp,
@@ -226,34 +240,20 @@ func searchExamples(
 		categoryMatches := pattern.MatchString(category.Name) || pattern.MatchString(category.Description)
 
 		for _, example := range category.Examples {
-			matchedFields := make([]string, 0, 4)
-
 			// Check each searchable field
-			if pattern.MatchString(example.Name) {
-				matchedFields = append(matchedFields, "name")
-			}
+			matches := pattern.MatchString(example.Name) ||
+				pattern.MatchString(example.Description) ||
+				pattern.MatchString(example.Query) ||
+				categoryMatches
 
-			if pattern.MatchString(example.Description) {
-				matchedFields = append(matchedFields, "description")
-			}
-
-			if pattern.MatchString(example.Query) {
-				matchedFields = append(matchedFields, "query")
-			}
-
-			if categoryMatches {
-				matchedFields = append(matchedFields, "category")
-			}
-
-			if len(matchedFields) > 0 {
+			if matches {
 				results = append(results, &SearchExampleResult{
-					CategoryKey:   categoryKey,
-					CategoryName:  category.Name,
-					ExampleName:   example.Name,
-					Description:   example.Description,
-					Query:         example.Query,
-					Cluster:       example.Cluster,
-					MatchedFields: matchedFields,
+					CategoryKey:  categoryKey,
+					CategoryName: category.Name,
+					ExampleName:  example.Name,
+					Description:  example.Description,
+					QueryPreview: truncateQuery(example.Query, QueryPreviewMaxLines, QueryPreviewMaxLength),
+					Cluster:      example.Cluster,
 				})
 
 				if len(results) >= limit {

@@ -38,68 +38,14 @@ const (
 	MinTimeout = 1
 )
 
-// executePythonDescription is the detailed description of the execute_python tool.
-const executePythonDescription = `Execute Python code in a sandboxed environment.
+// executePythonDescription is the description of the execute_python tool.
+const executePythonDescription = `Execute Python code in a sandboxed environment with the xatu library pre-installed.
 
-⚠️ IMPORTANT: Read xatu://getting-started resource first for query patterns and required filters.
-Use the search_examples tool to find example queries before writing your own.
+Read api://xatu for library documentation. Read datasources://list for available datasource UIDs.
 
-The xatu library is pre-installed for querying Ethereum network data via Grafana:
+Key modules: clickhouse, prometheus, loki, storage
 
-` + "```python" + `
-from xatu import clickhouse, prometheus, loki, storage
-
-# First, list available datasources
-datasources = clickhouse.list_datasources()  # Returns available ClickHouse datasources
-
-# Query ClickHouse via Grafana proxy (datasource_uid, sql)
-df = clickhouse.query("datasource-uid", "SELECT * FROM beacon_api_eth_v1_events_block LIMIT 10")
-
-# Query Prometheus via Grafana proxy
-result = prometheus.query("datasource-uid", "up")
-
-# Query Loki via Grafana proxy
-logs = loki.query("datasource-uid", '{app="beacon-node"}', limit=100)
-
-# Generate and save charts
-import matplotlib.pyplot as plt
-plt.figure(figsize=(10, 6))
-plt.plot(df['slot'], df['block_root'])
-plt.savefig('/workspace/chart.png')
-
-# Upload to get a URL
-url = storage.upload('/workspace/chart.png')
-print(f"Chart: {url}")
-` + "```" + `
-
-Use the datasources://list resource to discover available datasources and their UIDs.
-
-## Sessions (Persistent Workspaces)
-
-When sessions are enabled, the execution environment persists between calls:
-- Files written to /workspace/ persist across executions in the same session
-- The first execution returns a session_id in the response that can be reused
-- Sessions auto-expire after inactivity (default: 30 minutes)
-
-Example workflow:
-1. First call (no session_id): Query data and save to /workspace/
-2. Response includes session_id (e.g., "abc123")
-3. Second call with session_id="abc123": Files from step 1 are available
-
-` + "```python" + `
-# In first execution - save data to workspace
-df = clickhouse.query("datasource-uid", "SELECT * FROM ... LIMIT 1000")
-df.to_parquet('/workspace/data.parquet')
-print("Data saved!")
-
-# In second execution (pass session_id from first response) - data persists
-import pandas as pd
-df = pd.read_parquet('/workspace/data.parquet')  # File exists!
-print(f"Loaded {len(df)} rows")
-` + "```" + `
-
-All output files should be written to /workspace/ directory.
-Data stays in the sandbox - Claude only sees stdout, file metadata, and URLs.`
+Files written to /workspace/ persist within a session. Use storage.upload() for public URLs.`
 
 // NewExecutePythonTool creates the execute_python tool definition.
 func NewExecutePythonTool(
