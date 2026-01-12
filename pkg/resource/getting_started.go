@@ -22,10 +22,8 @@ const gettingStartedHeader = `# Xatu Getting Started Guide
 
 - **Search for examples first**: Use the search_examples tool to find relevant query patterns
 - **List available datasources**: Use the datasources://list resource to list available datasources
-- **Look up table schemas**: Use the clickhouse-schema://{cluster}/{table} resource to look up table schemas
+- **Look up table schemas**: Use the clickhouse-schema://{cluster}/{table} resource to look up table schemas. Tables have useful comments at the table level and the column level.
 - **Execute your query**: Use the execute_python tool with the adapted example
-
-## Required Query Filters
 
 ⚠️ **CRITICAL**:  Clickhouse guidelines:
 1. **Xatu Data is split in 2 clusters**: ` + "`xatu` and `xatu-cbt`" + `.
@@ -33,7 +31,8 @@ const gettingStartedHeader = `# Xatu Getting Started Guide
   - "xatu-cbt" contains aggregated data and will usually always be quicker to query. Databases are named after the network name.
 2. **Network filter when using "xatu" cluster**: ` + "`meta_network_name = '$network_name'`" + `. When using "xatu-cbt" cluster, you should use the "$network_name".database_name instead.` + "```" + `
 3. **Time/partition filter**: ` + "`$partition_column >= now() - INTERVAL 1 HOUR`" + `
-
+4. Be aware of canonical and head data. Canonical data is the data that has been finalized by the consensus client. Head data is the data that has not been finalized yet. Some tables have both data, some have one. MAKE SURE your queries are using the correct data. 
+When writing queries, particularly around blocks and reorgs, you MUST take in to account survivorship bias. E.g. if you are looking for late blocks in the canonical chain you may be silently excluding blocks that were orphaned for arriving too late.
 `
 
 // gettingStartedFooter contains static tips.
