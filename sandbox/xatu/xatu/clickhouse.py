@@ -212,8 +212,8 @@ def _raise_query_error(error: httpx.HTTPStatusError, datasource_uid: str) -> Non
     """Convert HTTP errors to actionable ClickHouseError exceptions."""
     status = error.response.status_code
     schema_hint = (
-        f"Use clickhouse-schema://{{cluster}}/{{table}} resource to find the "
-        f"partition key for your table."
+        "Use clickhouse://tables/{table} resource to find the "
+        "partition key for your table."
     )
 
     if status == 504:
@@ -236,7 +236,7 @@ def _raise_query_error(error: httpx.HTTPStatusError, datasource_uid: str) -> Non
             detail = "Bad request"
         raise ClickHouseError(
             f"Query error (400): {detail}",
-            f"Check column names and types against clickhouse-schema://{{cluster}}/{{table}} resource.",
+            "Check column names and types against clickhouse://tables/{table} resource.",
         ) from error
     else:
         raise ClickHouseError(

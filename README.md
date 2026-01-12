@@ -23,8 +23,7 @@ xatu-mcp enables AI assistants to analyze Ethereum blockchain data by providing:
 | Tool | Description |
 |------|-------------|
 | `execute_python` | Execute Python code in an isolated sandbox with the `xatu` library |
-| `list_output_files` | List files generated in the `/workspace` directory |
-| `get_output_file` | Retrieve content or URLs for output files |
+| `search_examples` | Search for query examples and patterns |
 
 ### Resources
 
@@ -40,6 +39,8 @@ xatu-mcp enables AI assistants to analyze Ethereum blockchain data by providing:
 | `datasources://clickhouse` | List ClickHouse datasources |
 | `datasources://prometheus` | List Prometheus datasources |
 | `datasources://loki` | List Loki datasources |
+| `clickhouse://tables` | List all ClickHouse tables (if schema discovery enabled) |
+| `clickhouse://tables/{table}` | Detailed schema for a specific table |
 
 ### Available ClickHouse Clusters
 
@@ -88,14 +89,13 @@ cp config.example.yaml config.yaml
 The configuration supports environment variable substitution using `${VAR_NAME}` syntax:
 
 ```yaml
-clickhouse:
-  xatu:
-    user: "${CLICKHOUSE_USER}"
-    password: "${CLICKHOUSE_PASSWORD}"
+grafana:
+  url: "${GRAFANA_URL}"
+  service_token: "${GRAFANA_SERVICE_TOKEN}"
 ```
 
 Required environment variables depend on your configuration:
-- `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` - ClickHouse credentials
+- `GRAFANA_URL`, `GRAFANA_SERVICE_TOKEN` - Grafana connection (required)
 - `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` - Storage credentials
 - `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` - OAuth (if auth enabled)
 
@@ -138,25 +138,12 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
       "args": ["serve"],
       "env": {
         "CONFIG_PATH": "/path/to/config.yaml",
-        "CLICKHOUSE_USER": "your-user",
-        "CLICKHOUSE_PASSWORD": "your-password"
+        "GRAFANA_URL": "https://grafana.example.com",
+        "GRAFANA_SERVICE_TOKEN": "your-service-token"
       }
     }
   }
 }
-```
-
-### Schema Management
-
-```bash
-# List configured clusters
-xatu-mcp schema list
-
-# Refresh schema cache
-xatu-mcp schema refresh
-
-# Refresh specific cluster as JSON
-xatu-mcp schema refresh --cluster xatu --format json
 ```
 
 ## Sandbox Environment
@@ -176,23 +163,28 @@ Python code executes in an isolated Docker container with:
 ```python
 from xatu import clickhouse, prometheus, loki, storage
 
-# Query ClickHouse for blockchain data
-# Arguments: network, SQL query, cluster name
-df = clickhouse.query("mainnet", """
+# List available ClickHouse datasources
+datasources = clickhouse.list_datasources()
+print(datasources)  # [{'uid': 'abc123', 'name': 'xatu-clickhouse', ...}]
+
+# Query ClickHouse using datasource UID
+# Use datasources://clickhouse resource to find available UIDs
+df = clickhouse.query("your-datasource-uid", """
     SELECT
         slot,
         block_root,
         proposer_index
     FROM beacon_api_eth_v1_events_block
     WHERE meta_network_name = 'mainnet'
+      AND slot_start_date_time >= now() - INTERVAL 1 HOUR
     LIMIT 10
-""", cluster="xatu")
+""")
 
-# Query Prometheus metrics
-result = prometheus.query("up")
+# Query Prometheus metrics (uses datasource UID)
+result = prometheus.query("your-prometheus-uid", "up")
 
-# Query Loki logs
-logs = loki.query('{job="beacon"}')
+# Query Loki logs (uses datasource UID)
+logs = loki.query("your-loki-uid", '{job="beacon"}')
 
 # Save and upload a chart
 import matplotlib.pyplot as plt
@@ -207,7 +199,7 @@ print(f"Chart: {url}")
 
 ### Output Files
 
-All output files should be written to `/workspace/`. Files are automatically tracked and can be uploaded to S3 for public access.
+Files written to `/workspace/` persist within a session and can be uploaded to S3 using `storage.upload()` for public access.
 
 ## Authentication
 

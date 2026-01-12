@@ -20,31 +20,51 @@ const gettingStartedHeader = `# Xatu Getting Started Guide
 
 ## Quick Start Workflow
 
-- **Search for examples first**: Use the search_examples tool to find relevant query patterns
-- **List available datasources**: Use the datasources://list resource to list available datasources
-- **Look up table schemas**: Use the clickhouse-schema://{cluster}/{table} resource to look up table schemas. Tables have useful comments at the table level and the column level.
-- **Execute your query**: Use the execute_python tool with the adapted example
+1. **Read datasources://clickhouse** to get the exact datasource UIDs you need
+2. **Use search_examples tool** to find relevant query patterns for your task
+3. **Check clickhouse://tables/{table}** for exact column names and partition keys
+4. **Replace placeholders in examples**: Examples use ` + "`{network}`" + ` placeholder - replace with actual network (e.g., ` + "`mainnet`" + `, ` + "`sepolia`" + `)
+5. **Execute with execute_python** using the adapted example
 
-⚠️ **CRITICAL**:  Clickhouse guidelines:
-1. **Xatu Data is split in 2 clusters**: ` + "`xatu` and `xatu-cbt`" + `.
-  - "xatu" is the main cluster and contains the raw data. All networks land in the same "default" database.
-  - "xatu-cbt" contains aggregated data and will usually always be quicker to query. Databases are named after the network name.
-2. **Network filter when using "xatu" cluster**: ` + "`meta_network_name = '$network_name'`" + `. When using "xatu-cbt" cluster, you should use the "$network_name".database_name instead.` + "```" + `
-3. **Time/partition filter**: ` + "`$partition_column >= now() - INTERVAL 1 HOUR`" + `
-4. Be aware of canonical and head data. Canonical data is the data that has been finalized by the consensus client. Head data is the data that has not been finalized yet. Some tables have both data, some have one. MAKE SURE your queries are using the correct data. 
-When writing queries, particularly around blocks and reorgs, you MUST take in to account survivorship bias. E.g. if you are looking for late blocks in the canonical chain you may be silently excluding blocks that were orphaned for arriving too late.
+## ⚠️ CRITICAL: Cluster Rules
+
+Xatu data is split across TWO clusters with DIFFERENT query syntax:
+
+| Cluster | Contains | Table Syntax | Network Filter |
+|---------|----------|--------------|----------------|
+| **xatu** | Raw event data | ` + "`FROM table_name`" + ` | ` + "`WHERE meta_network_name = 'mainnet'`" + ` |
+| **xatu-cbt** | Aggregated data (faster) | ` + "`FROM mainnet.table_name`" + ` | Database prefix IS the filter |
+
+**Key rules:**
+- Always check which cluster (` + "`cluster: xatu`" + ` or ` + "`cluster: xatu-cbt`" + `) an example uses
+- The datasource UID determines which cluster you query - check datasources://clickhouse
+- Always filter by partition column (usually ` + "`slot_start_date_time`" + `) to avoid timeouts
+
+## Canonical vs Head Data
+
+- **Canonical**: Finalized data - confirmed by consensus, no reorgs possible
+- **Head**: Latest data - may be reorged, use for real-time monitoring
+- Tables often have both variants (e.g., ` + "`fct_block_head`" + ` vs ` + "`fct_block_canonical`" + `)
+- When analyzing historical data, prefer canonical tables
+- When analyzing reorgs/forks, you MUST account for survivorship bias (orphaned blocks are excluded from canonical)
 `
 
 // gettingStartedFooter contains static tips.
 const gettingStartedFooter = `
+## Sessions & File Persistence
+
+- Files written to ` + "`/workspace/`" + ` persist within a session
+- Pass the ` + "`session_id`" + ` from tool responses to continue a session
+- Sessions expire after inactivity - check the ` + "`ttl`" + ` in responses
+- For important outputs, use ` + "`storage.upload()`" + ` immediately to get a permanent URL
+
 ## Tips
 
 - Use search_examples("block") to find block-related query patterns
 - Use search_examples("validator") to find validator-related patterns
-- Write output files to /workspace/ directory before uploading
-- Avoid spamming stdout with too much text
-- If the user asks for a chart or file, use the storage.upload() tool to upload the chart to S3 and return the URL. 
-  - Note: If you are Claude Code, your may need to manually recite the URL to the user towards the end of your response to avoid it being cut off.
+- Avoid spamming stdout with too much text - keep output concise
+- If the user asks for a chart or file, use storage.upload() to upload and return the URL
+  - Note: If you are Claude Code, you may need to manually recite the URL to the user towards the end of your response to avoid it being cut off.
 `
 
 // RegisterGettingStartedResources registers the xatu://getting-started resource.

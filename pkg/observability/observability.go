@@ -21,8 +21,6 @@ type Service interface {
 	Start(ctx context.Context) error
 	// Stop gracefully shuts down the metrics server.
 	Stop() error
-	// HTTPHandler returns the HTTP handler for metrics endpoints.
-	HTTPHandler() http.Handler
 }
 
 // service implements the Service interface.
@@ -111,11 +109,6 @@ func (s *service) Stop() error {
 	s.log.Info("Metrics server stopped")
 
 	return nil
-}
-
-// HTTPHandler returns the HTTP handler for metrics endpoints.
-func (s *service) HTTPHandler() http.Handler {
-	return promhttp.Handler()
 }
 
 // healthHandler returns a simple health check response.

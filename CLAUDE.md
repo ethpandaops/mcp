@@ -124,7 +124,8 @@ Key resources exposed by the server:
 - `datasources://clickhouse` - ClickHouse datasources only
 - `networks://active` - Active Ethereum networks
 - `networks://{name}` - Specific network details
-- `clickhouse-schema://{cluster}/{table}` - Table schema (if enabled)
+- `clickhouse://tables` - List all tables (if schema discovery enabled)
+- `clickhouse://tables/{table}` - Table schema details
 - `api://xatu` - Python library documentation
 - `examples://queries` - Common query patterns
 

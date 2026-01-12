@@ -215,7 +215,7 @@ func (c *cartographoorClient) IsDevnet(network discovery.Network) bool {
 // GetClusters returns the xatu clusters for a network.
 func (c *cartographoorClient) GetClusters(network discovery.Network) []string {
 	if c.IsDevnet(network) {
-		return []string{"experimental-xatu", "xatu-cbt"}
+		return []string{"xatu-experimental", "xatu-cbt"}
 	}
 
 	return []string{"xatu", "xatu-cbt"}
