@@ -1,0 +1,119 @@
+# Xatu MCP Server Configuration
+# Copy this file to config.yaml and customize for your environment.
+# Environment variables can be substituted using ${VAR_NAME} syntax.
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  base_url: "http://localhost:8080"
+
+# Grafana configuration
+# All data queries (ClickHouse, Prometheus, Loki) are proxied through Grafana.
+# This simplifies credential management - you only need a single Grafana service token.
+grafana:
+  url: "${GRAFANA_URL}"  # e.g., https://grafana.ethpandaops.io
+  service_token: "${GRAFANA_SERVICE_TOKEN}"  # Service account token with datasource:read and datasource:query permissions
+  timeout: 120  # seconds
+
+  # Datasources configuration with descriptions for LLM context
+  # If specified, only these datasources are exposed
+  # Each datasource can have a description that provides context for the LLM
+  datasources:
+    # Main Xatu cluster - raw event data
+    - uid: "your-xatu-clickhouse-uid"
+      description: |
+        Main Xatu ClickHouse cluster with raw Ethereum event data.
+        Contains beacon chain events (blocks, attestations, blob sidecars, etc.)
+        and execution layer data across mainnet, sepolia, holesky networks.
+        IMPORTANT: Always filter by slot_start_date_time (partition key) AND meta_network_name.
+        Use clickhouse-schema://xatu/{table} to discover available tables and columns.
+
+    # Pre-aggregated CBT data
+    - uid: "your-xatu-cbt-clickhouse-uid"
+      description: |
+        Xatu CBT (Consensus Block Timing) cluster with pre-aggregated timing data.
+        Contains block timing analysis, attestation accuracy by entity, and
+        validator performance metrics. Faster queries than raw data.
+        Tables are partitioned by slot_start_date_time. Always include time filters.
+        Use clickhouse-schema://xatu-cbt/{table} to discover available tables.
+
+    - uid: "your-loki-uid"
+      description: |
+        Loki cluster for beacon node and validator logs.
+        Must filter by label (e.g., ingress_user, container, pod, namespace).
+        Common queries: error patterns, consensus issues, peer connectivity.
+
+    - uid: "your-prometheus-uid"
+      description: |
+        Prometheus/VictoriaMetrics for infrastructure metrics.
+        Contains beacon node metrics, validator metrics, and system health data.
+        Common labels: ingress_user, container, pod, namespace, instance.
+
+# Sandbox configuration
+sandbox:
+  # Backend: docker (local dev) | gvisor (production)
+  backend: docker
+  image: "xatu-mcp-sandbox:latest"
+  timeout: 60  # seconds
+  memory_limit: "2g"
+  cpu_limit: 1.0
+  network: "mcp-internal"
+
+  # Session configuration (optional)
+  # When enabled, sandbox containers persist between calls
+  # session:
+  #   enabled: true
+  #   ttl: 30m          # idle timeout (default: 30m)
+  #   max_duration: 4h  # absolute max session lifetime (default: 4h)
+  #   max_sessions: 10  # max concurrent sessions (default: 10)
+
+# S3-compatible storage for output files
+storage:
+  endpoint: "${S3_ENDPOINT}"  # e.g., http://minio:9000 or https://xxx.r2.cloudflarestorage.com
+  access_key: "${S3_ACCESS_KEY}"
+  secret_key: "${S3_SECRET_KEY}"
+  bucket: "xatu-mcp-outputs"
+  region: "us-east-1"
+  public_url_prefix: "${S3_PUBLIC_URL}"  # e.g., https://outputs.example.com
+
+# Authentication configuration
+# When enabled, requires GitHub OAuth for HTTP transports (SSE, streamable-http).
+# Stdio transport (local/Claude Desktop) never requires auth.
+auth:
+  enabled: false  # Set to true to require authentication
+
+  # GitHub OAuth configuration (required when auth.enabled is true)
+  # github:
+  #   client_id: "${GITHUB_CLIENT_ID}"
+  #   client_secret: "${GITHUB_CLIENT_SECRET}"
+
+  # Organizations allowed to access the server (empty = all authenticated users)
+  # allowed_orgs:
+  #   - "ethpandaops"
+
+  # JWT token configuration
+  # tokens:
+  #   secret_key: "${JWT_SECRET_KEY}"  # Required when auth is enabled
+
+# Observability configuration
+observability:
+  metrics_enabled: true
+  metrics_port: 9090
+
+  tracing_enabled: false
+  # otlp_endpoint: "${OTLP_ENDPOINT}"
+
+# ClickHouse schema discovery configuration
+# Discovers table schemas from configured ClickHouse datasources via Grafana.
+# Each datasource must be explicitly configured with its Grafana UID and cluster name.
+schema_discovery:
+  # enabled: true  # Defaults to true if datasources are configured
+  refresh_interval: 15m  # How often to refresh schema cache
+
+  # Datasources to discover schemas from
+  # Each entry maps a Grafana datasource UID to a logical cluster name
+  datasources:
+    - uid: "your-clickhouse-datasource-uid"
+      cluster: "xatu"
+    - uid: "your-clickhouse-cbt-datasource-uid"
+      cluster: "xatu-cbt"

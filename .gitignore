@@ -1,0 +1,39 @@
+# Binaries
+xatu-mcp
+xatu-mcp-linux-*
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+coverage.out
+coverage.html
+*.test
+
+# Config files with secrets
+config.yaml
+.env
+.envrc
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output files
+/output/
+/shared/
+*.log
+
+# Sandbox temp files
+/tmp/
