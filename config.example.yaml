@@ -26,7 +26,7 @@ grafana:
         Contains beacon chain events (blocks, attestations, blob sidecars, etc.)
         and execution layer data across mainnet, sepolia, holesky networks.
         IMPORTANT: Always filter by slot_start_date_time (partition key) AND meta_network_name.
-        Use clickhouse-schema://xatu/{table} to discover available tables and columns.
+        Use clickhouse://tables/{table} to discover available tables and columns.
 
     # Pre-aggregated CBT data
     - uid: "your-xatu-cbt-clickhouse-uid"
@@ -35,7 +35,7 @@ grafana:
         Contains block timing analysis, attestation accuracy by entity, and
         validator performance metrics. Faster queries than raw data.
         Tables are partitioned by slot_start_date_time. Always include time filters.
-        Use clickhouse-schema://xatu-cbt/{table} to discover available tables.
+        Use clickhouse://tables/{table} to discover available tables.
 
     - uid: "your-loki-uid"
       description: |
@@ -59,9 +59,9 @@ sandbox:
   cpu_limit: 1.0
   network: "mcp-internal"
 
-  # Session configuration (optional)
-  # When enabled, sandbox containers persist between calls
-  # session:
+  # Sessions configuration (optional)
+  # When enabled, sandbox containers persist between calls (enabled by default)
+  # sessions:
   #   enabled: true
   #   ttl: 30m          # idle timeout (default: 30m)
   #   max_duration: 4h  # absolute max session lifetime (default: 4h)

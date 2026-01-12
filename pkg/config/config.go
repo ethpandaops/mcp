@@ -149,13 +149,12 @@ func (c *SessionConfig) IsEnabled() bool {
 
 // StorageConfig holds S3 storage configuration.
 type StorageConfig struct {
-	Endpoint          string `yaml:"endpoint"`
-	AccessKey         string `yaml:"access_key"`
-	SecretKey         string `yaml:"secret_key"`
-	Bucket            string `yaml:"bucket"`
-	Region            string `yaml:"region"`
-	PublicURLPrefix   string `yaml:"public_url_prefix,omitempty"`
-	InternalURLPrefix string `yaml:"internal_url_prefix,omitempty"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKey       string `yaml:"access_key"`
+	SecretKey       string `yaml:"secret_key"`
+	Bucket          string `yaml:"bucket"`
+	Region          string `yaml:"region"`
+	PublicURLPrefix string `yaml:"public_url_prefix,omitempty"`
 }
 
 // ObservabilityConfig holds observability configuration.

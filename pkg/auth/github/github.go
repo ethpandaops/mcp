@@ -3,8 +3,6 @@ package github
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -251,21 +249,6 @@ func (c *Client) getUserOrganizations(ctx context.Context, accessToken string) (
 	}
 
 	return orgs, nil
-}
-
-// GetUserOrganizations fetches just the user's organization memberships.
-func (c *Client) GetUserOrganizations(ctx context.Context, accessToken string) ([]string, error) {
-	return c.getUserOrganizations(ctx, accessToken)
-}
-
-// GenerateState generates a cryptographically secure state parameter.
-func GenerateState() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("generating random bytes: %w", err)
-	}
-
-	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
 // ValidateRedirectURI validates a redirect URI for security.

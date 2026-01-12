@@ -30,6 +30,9 @@ func NewGVisorBackend(cfg config.SandboxConfig, log logrus.FieldLogger) (*GVisor
 	// Override the component name in the logger.
 	dockerBackend.log = log.WithField("component", "sandbox.gvisor")
 
+	// Use gVisor security config which sets the runsc runtime.
+	dockerBackend.securityConfigFunc = GVisorSecurityConfig
+
 	return &GVisorBackend{
 		DockerBackend: dockerBackend,
 	}, nil

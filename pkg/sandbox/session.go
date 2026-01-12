@@ -217,16 +217,6 @@ func (m *SessionManager) Get(sessionID string, ownerID string) (*Session, error)
 	return session, nil
 }
 
-// Touch updates the last used timestamp for a session.
-func (m *SessionManager) Touch(sessionID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if session, ok := m.sessions[sessionID]; ok {
-		session.LastUsed = time.Now()
-	}
-}
-
 // TTLRemaining returns the time remaining until the session expires from inactivity.
 func (m *SessionManager) TTLRemaining(sessionID string) time.Duration {
 	m.mu.RLock()

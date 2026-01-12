@@ -438,8 +438,9 @@ func (s *simpleService) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get and validate authorization code.
-	// We must check all validation conditions before marking as used to prevent
-	// replay attacks while still allowing valid requests.
+	// All validation must complete before marking as used to prevent:
+	// 1. Replay attacks (can't reuse a code)
+	// 2. DoS attacks (attacker can't burn a stolen code with invalid params)
 	s.codesMu.Lock()
 	issued, ok := s.codes[code]
 
@@ -465,20 +466,26 @@ func (s *simpleService) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate all parameters before marking as used to prevent DoS attacks
+	// where an attacker could burn a stolen code with invalid parameters.
+	if issued.ClientID != clientID || issued.RedirectURI != redirectURI || issued.Resource != resource {
+		s.codesMu.Unlock()
+		s.writeError(w, http.StatusBadRequest, "invalid_grant", "parameter mismatch")
+
+		return
+	}
+
+	// Verify PKCE before marking as used.
+	if !s.verifyPKCE(codeVerifier, issued.CodeChallenge) {
+		s.codesMu.Unlock()
+		s.writeError(w, http.StatusBadRequest, "invalid_grant", "invalid code_verifier")
+
+		return
+	}
+
 	// Mark as used only after all checks pass.
 	issued.Used = true
 	s.codesMu.Unlock()
-
-	if issued.ClientID != clientID || issued.RedirectURI != redirectURI || issued.Resource != resource {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "parameter mismatch")
-		return
-	}
-
-	// Verify PKCE.
-	if !s.verifyPKCE(codeVerifier, issued.CodeChallenge) {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "invalid code_verifier")
-		return
-	}
 
 	// Create JWT.
 	now := time.Now()

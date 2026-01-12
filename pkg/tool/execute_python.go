@@ -23,7 +23,8 @@ const resourceTipMessage = `
 💡 TIP: Read these MCP resources for available datasources and schemas:
    - datasources://list - available datasource UIDs
    - datasources://clickhouse - ClickHouse datasources only
-   - clickhouse-schema://{cluster}/{table} - table schema (if schema discovery enabled)
+   - clickhouse://tables - list all tables (if schema discovery enabled)
+   - clickhouse://tables/{table} - table schema details
    - api://xatu - Python library documentation
    - networks://active - available networks`
 
@@ -33,7 +34,8 @@ const (
 	// DefaultTimeout is the default execution timeout in seconds.
 	DefaultTimeout = 60
 	// MaxTimeout is the maximum allowed execution timeout in seconds.
-	MaxTimeout = 300
+	// This matches config.MaxSandboxTimeout.
+	MaxTimeout = 600
 	// MinTimeout is the minimum allowed execution timeout in seconds.
 	MinTimeout = 1
 )
@@ -41,11 +43,13 @@ const (
 // executePythonDescription is the description of the execute_python tool.
 const executePythonDescription = `Execute Python code in a sandboxed environment with the xatu library pre-installed.
 
-Read api://xatu for library documentation. Read datasources://list for available datasource UIDs.
+Read xatu://getting-started first, then api://xatu for library docs, datasources://clickhouse for UIDs.
 
 Key modules: clickhouse, prometheus, loki, storage
 
-Files written to /workspace/ persist within a session. Use storage.upload() for public URLs.`
+**Sessions**: Files in /workspace/ persist across calls within a session. Pass the session_id from responses to continue a session. Sessions expire after inactivity - check the ttl in responses. For important outputs, use storage.upload() immediately to get a permanent URL.
+
+**Output**: Response includes [session] id=X ttl=Xm showing remaining session time.`
 
 // NewExecutePythonTool creates the execute_python tool definition.
 func NewExecutePythonTool(
@@ -66,7 +70,7 @@ func NewExecutePythonTool(
 					},
 					"timeout": map[string]any{
 						"type":        "integer",
-						"description": "Execution timeout in seconds (default: from config, max: 300)",
+						"description": "Execution timeout in seconds (default: from config, max: 600)",
 						"minimum":     MinTimeout,
 						"maximum":     MaxTimeout,
 					},
@@ -209,7 +213,7 @@ func formatExecutionResult(result *sandbox.ExecutionResult, cfg *config.Config) 
 	// Add note about localhost URLs if storage is configured with localhost.
 	if cfg.Storage != nil && strings.Contains(cfg.Storage.PublicURLPrefix, "localhost") {
 		if strings.Contains(result.Stdout, "localhost") {
-			parts = append(parts, "[note] Storage URLs use localhost - these are accessible if running the server locally.")
+			parts = append(parts, "[note] Storage URLs use localhost - these are accessible to the user.")
 		}
 	}
 

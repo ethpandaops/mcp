@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -20,6 +22,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
+
+// Container label keys for identifying and managing xatu-mcp containers.
+const (
+	// LabelManaged identifies containers created by xatu-mcp.
+	LabelManaged = "io.xatu-mcp.managed"
+	// LabelCreatedAt stores the Unix timestamp when the container was created.
+	LabelCreatedAt = "io.xatu-mcp.created-at"
+	// LabelSessionID stores the session ID for session containers.
+	LabelSessionID = "io.xatu-mcp.session-id"
+	// LabelOwnerID stores the owner ID (GitHub user ID) if auth is enabled.
+	LabelOwnerID = "io.xatu-mcp.owner-id"
+)
+
+// SecurityConfigFunc is a function that returns security configuration.
+type SecurityConfigFunc func(memoryLimit string, cpuLimit float64) (*SecurityConfig, error)
 
 // DockerBackend implements sandbox execution using standard Docker containers.
 type DockerBackend struct {
@@ -33,14 +50,19 @@ type DockerBackend struct {
 
 	// sessionManager handles persistent session lifecycle.
 	sessionManager *SessionManager
+
+	// securityConfigFunc returns the security configuration.
+	// This allows gVisor backend to override with gVisor-specific config.
+	securityConfigFunc SecurityConfigFunc
 }
 
 // NewDockerBackend creates a new Docker sandbox backend.
 func NewDockerBackend(cfg config.SandboxConfig, log logrus.FieldLogger) (*DockerBackend, error) {
 	backend := &DockerBackend{
-		cfg:              cfg,
-		log:              log.WithField("component", "sandbox.docker"),
-		activeContainers: make(map[string]string, 16),
+		cfg:                cfg,
+		log:                log.WithField("component", "sandbox.docker"),
+		activeContainers:   make(map[string]string, 16),
+		securityConfigFunc: DefaultSecurityConfig,
 	}
 
 	// Create session manager with cleanup callback.
@@ -78,6 +100,13 @@ func (b *DockerBackend) Start(ctx context.Context) error {
 	}
 
 	b.client = dockerClient
+
+	// Clean up expired orphaned containers from previous runs.
+	// Only removes containers older than max session duration to avoid
+	// disrupting active sessions from other server instances.
+	if err := b.cleanupExpiredContainers(ctx); err != nil {
+		b.log.WithError(err).Warn("Failed to cleanup expired containers")
+	}
 
 	// Ensure the sandbox image is available.
 	if err := b.ensureImage(ctx); err != nil {
@@ -283,7 +312,7 @@ func (b *DockerBackend) executeWithNewSession(ctx context.Context, req ExecuteRe
 	log.Debug("Creating new session container")
 
 	// Create the session container.
-	containerID, err := b.createSessionContainer(ctx, req.Env)
+	containerID, err := b.createSessionContainer(ctx, req.Env, req.OwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("creating session container: %w", err)
 	}
@@ -348,7 +377,7 @@ func (b *DockerBackend) executeInSession(ctx context.Context, req ExecuteRequest
 }
 
 // createSessionContainer creates a long-running container for session use.
-func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[string]string) (string, error) {
+func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[string]string, ownerID string) (string, error) {
 	// Merge environment variables with defaults.
 	containerEnv := SandboxEnvDefaults()
 
@@ -362,6 +391,16 @@ func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[stri
 		envSlice = append(envSlice, k+"="+v)
 	}
 
+	// Build labels for container identification and lifecycle management.
+	labels := map[string]string{
+		LabelManaged:   "true",
+		LabelCreatedAt: strconv.FormatInt(time.Now().Unix(), 10),
+	}
+
+	if ownerID != "" {
+		labels[LabelOwnerID] = ownerID
+	}
+
 	// Session container runs sleep infinity and we exec into it.
 	containerConfig := &container.Config{
 		Image:      b.cfg.Image,
@@ -369,6 +408,7 @@ func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[stri
 		Env:        envSlice,
 		User:       "nobody",
 		WorkingDir: "/workspace",
+		Labels:     labels,
 	}
 
 	// Create workspace directory inside container.
@@ -680,6 +720,10 @@ func (b *DockerBackend) buildContainerConfig(
 		Cmd:   []string{"python", "/shared/script.py"},
 		Env:   envSlice,
 		User:  "nobody",
+		Labels: map[string]string{
+			LabelManaged:   "true",
+			LabelCreatedAt: strconv.FormatInt(time.Now().Unix(), 10),
+		},
 	}
 
 	// Determine the source paths for mounts.
@@ -713,9 +757,8 @@ func (b *DockerBackend) buildContainerConfig(
 }
 
 // getSecurityConfig returns the security configuration for this backend.
-// Subclasses can override this to use different security settings.
 func (b *DockerBackend) getSecurityConfig() (*SecurityConfig, error) {
-	return DefaultSecurityConfig(b.cfg.MemoryLimit, b.cfg.CPULimit)
+	return b.securityConfigFunc(b.cfg.MemoryLimit, b.cfg.CPULimit)
 }
 
 // waitForContainer waits for a container to finish and returns its output.
@@ -845,6 +888,88 @@ func (b *DockerBackend) forceRemoveContainer(ctx context.Context, containerID st
 		if !errdefs.IsNotFound(err) {
 			return fmt.Errorf("removing container: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// cleanupExpiredContainers removes xatu-mcp containers that have exceeded max session duration.
+// This handles orphaned containers from previous server instances that were killed abruptly.
+func (b *DockerBackend) cleanupExpiredContainers(ctx context.Context) error {
+	// Find all containers with our managed label.
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", LabelManaged+"=true")
+
+	containers, err := b.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filterArgs,
+	})
+	if err != nil {
+		return fmt.Errorf("listing managed containers: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return nil
+	}
+
+	maxAge := b.cfg.Sessions.MaxDuration
+	if maxAge == 0 {
+		maxAge = 4 * time.Hour // Default max duration
+	}
+
+	now := time.Now()
+	var cleaned int
+
+	for _, c := range containers {
+		// Check the created-at label for age.
+		createdAtStr, ok := c.Labels[LabelCreatedAt]
+		if !ok {
+			// No timestamp label - check Docker's created time instead.
+			// This handles containers created before we added labels.
+			createdAt := time.Unix(c.Created, 0)
+			if now.Sub(createdAt) <= maxAge {
+				continue
+			}
+		} else {
+			createdAtUnix, err := strconv.ParseInt(createdAtStr, 10, 64)
+			if err != nil {
+				b.log.WithFields(logrus.Fields{
+					"container_id": c.ID[:12],
+					"created_at":   createdAtStr,
+				}).Warn("Invalid created-at label, skipping")
+
+				continue
+			}
+
+			if now.Sub(time.Unix(createdAtUnix, 0)) <= maxAge {
+				continue
+			}
+		}
+
+		// Container is expired, remove it.
+		sessionID := c.Labels[LabelSessionID]
+		ownerID := c.Labels[LabelOwnerID]
+
+		b.log.WithFields(logrus.Fields{
+			"container_id": c.ID[:12],
+			"session_id":   sessionID,
+			"owner_id":     ownerID,
+		}).Info("Removing expired orphaned container")
+
+		if err := b.forceRemoveContainer(ctx, c.ID); err != nil {
+			b.log.WithFields(logrus.Fields{
+				"container_id": c.ID[:12],
+				"error":        err,
+			}).Warn("Failed to remove expired container")
+
+			continue
+		}
+
+		cleaned++
+	}
+
+	if cleaned > 0 {
+		b.log.WithField("count", cleaned).Info("Cleaned up expired orphaned containers")
 	}
 
 	return nil
