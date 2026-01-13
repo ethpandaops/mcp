@@ -387,12 +387,13 @@ func RegisterAPIResources(log logrus.FieldLogger, reg Registry) {
 
 	// Register static api://xatu resource
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "api://xatu",
-			Name:        "Xatu Library API",
-			Description: "API documentation for the xatu Python library available in the sandbox",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"api://xatu",
+			"Xatu Library API",
+			mcp.WithResourceDescription("API documentation for the xatu Python library available in the sandbox"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.9),
+		),
 		Handler: func(_ context.Context, _ string) (string, error) {
 			data, err := json.MarshalIndent(xatuAPIDocs, "", "  ")
 			if err != nil {

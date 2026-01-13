@@ -42,12 +42,13 @@ func RegisterDatasourcesResources(
 
 	// Register static datasources://list resource
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "datasources://list",
-			Name:        "Available Datasources",
-			Description: "List all Grafana datasources available for queries (ClickHouse, Prometheus, Loki)",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"datasources://list",
+			"Available Datasources",
+			mcp.WithResourceDescription("List all Grafana datasources available for queries (ClickHouse, Prometheus, Loki)"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.8),
+		),
 		Handler: func(_ context.Context, _ string) (string, error) {
 			datasources := grafanaClient.ListDatasources()
 			data := make([]datasourceData, 0, len(datasources))
@@ -76,6 +77,13 @@ func RegisterDatasourcesResources(
 		},
 	})
 
+	// Priority by datasource type (ClickHouse is primary, others are secondary)
+	typePriority := map[grafana.DatasourceType]float64{
+		grafana.DatasourceTypeClickHouse: 0.7,
+		grafana.DatasourceTypePrometheus: 0.5,
+		grafana.DatasourceTypeLoki:       0.5,
+	}
+
 	// Register static resources for each datasource type
 	for _, dsType := range []grafana.DatasourceType{
 		grafana.DatasourceTypeClickHouse,
@@ -85,12 +93,13 @@ func RegisterDatasourcesResources(
 		dsTypeStr := string(dsType)
 
 		reg.RegisterStatic(StaticResource{
-			Resource: mcp.Resource{
-				URI:         fmt.Sprintf("datasources://%s", dsTypeStr),
-				Name:        fmt.Sprintf("%s Datasources", capitalize(dsTypeStr)),
-				Description: fmt.Sprintf("List available %s datasources", dsTypeStr),
-				MIMEType:    "application/json",
-			},
+			Resource: mcp.NewResource(
+				fmt.Sprintf("datasources://%s", dsTypeStr),
+				fmt.Sprintf("%s Datasources", capitalize(dsTypeStr)),
+				mcp.WithResourceDescription(fmt.Sprintf("List available %s datasources", dsTypeStr)),
+				mcp.WithMIMEType("application/json"),
+				mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, typePriority[dsType]),
+			),
 			Handler: createDatasourceTypeHandler(grafanaClient, dsType),
 		})
 	}
