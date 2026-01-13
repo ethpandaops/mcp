@@ -23,6 +23,7 @@ type Config struct {
 	Storage         *StorageConfig        `yaml:"storage,omitempty"`
 	Observability   ObservabilityConfig   `yaml:"observability"`
 	SchemaDiscovery SchemaDiscoveryConfig `yaml:"schema_discovery"`
+	SemanticSearch  SemanticSearchConfig  `yaml:"semantic_search"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -178,6 +179,27 @@ func (c *SchemaDiscoveryConfig) IsEnabled() bool {
 	}
 
 	return len(c.Datasources) > 0
+}
+
+// SemanticSearchConfig holds configuration for semantic example search.
+type SemanticSearchConfig struct {
+	// Enabled controls whether semantic search is active. Defaults to true if model path exists.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// ModelPath is the path to the GGUF embedding model file.
+	ModelPath string `yaml:"model_path,omitempty"`
+
+	// GPULayers is the number of layers to offload to GPU (0 = CPU only).
+	GPULayers int `yaml:"gpu_layers,omitempty"`
+}
+
+// IsEnabled returns whether semantic search is enabled.
+// Defaults to true if a model path is configured.
+func (c *SemanticSearchConfig) IsEnabled() bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return c.ModelPath != ""
 }
 
 // SandboxConfig holds sandbox execution configuration.
@@ -368,6 +390,11 @@ func applyDefaults(cfg *Config) {
 	// Schema discovery defaults.
 	if cfg.SchemaDiscovery.RefreshInterval == 0 {
 		cfg.SchemaDiscovery.RefreshInterval = 15 * time.Minute
+	}
+
+	// Semantic search defaults.
+	if cfg.SemanticSearch.ModelPath == "" {
+		cfg.SemanticSearch.ModelPath = "/usr/share/xatu-mcp/MiniLM-L6-v2.Q8_0.gguf"
 	}
 }
 

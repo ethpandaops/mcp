@@ -98,7 +98,7 @@ df = clickhouse.query('xatu', 'SELECT ... WHERE meta_network_name = "mainnet"') 
 
 **Resources:** datasources://clickhouse for cluster details, clickhouse://tables/{table} for schemas, api://xatu for full API docs.
 
-**Sessions**: Files in /workspace/ persist across calls. Pass session_id from responses to continue. Use storage.upload() for permanent URLs.`
+**IMPORTANT - Session Reuse:** You MUST reuse session IDs across calls. When the output contains [session] id=XXX, pass that ID as session_id in ALL subsequent execute_python calls. This preserves /workspace/ files and avoids container startup overhead. Only omit session_id for the very first call.`
 
 // NewExecutePythonTool creates the execute_python tool definition.
 func NewExecutePythonTool(
@@ -125,7 +125,7 @@ func NewExecutePythonTool(
 					},
 					"session_id": map[string]any{
 						"type":        "string",
-						"description": "Optional session ID to reuse a persistent container. If omitted, a new session is created (when sessions are enabled).",
+						"description": "Session ID from a previous call. ALWAYS pass this when available - it preserves files and is faster. Only omit on the very first call.",
 					},
 				},
 				Required: []string{"code"},
@@ -244,9 +244,9 @@ func formatExecutionResult(result *sandbox.ExecutionResult, cfg *config.Config) 
 		parts = append(parts, fmt.Sprintf("[files] %s", strings.Join(result.OutputFiles, ", ")))
 	}
 
-	// Include session info if available.
+	// Include session info if available with clear reuse instruction.
 	if result.SessionID != "" {
-		sessionInfo := fmt.Sprintf("[session] id=%s ttl=%s",
+		sessionInfo := fmt.Sprintf("[session] id=%s ttl=%s → REUSE THIS session_id IN ALL SUBSEQUENT CALLS",
 			result.SessionID, result.SessionTTLRemaining.Round(time.Second))
 
 		if len(result.SessionFiles) > 0 {

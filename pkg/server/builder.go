@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/xatu-mcp/pkg/auth"
 	"github.com/ethpandaops/xatu-mcp/pkg/config"
+	"github.com/ethpandaops/xatu-mcp/pkg/embedding"
 	"github.com/ethpandaops/xatu-mcp/pkg/resource"
 	"github.com/ethpandaops/xatu-mcp/pkg/sandbox"
 	"github.com/ethpandaops/xatu-mcp/pkg/tool"
@@ -114,8 +116,25 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		b.log.Info("Auth service started")
 	}
 
+	// Create embedding model and example index for semantic search
+	exampleIndex, err := b.buildExampleIndex()
+	if err != nil {
+		// Clean up on failure
+		_ = sandboxSvc.Stop(ctx)
+		_ = cartographoorClient.Stop()
+		if schemaClient != nil {
+			_ = schemaClient.Stop()
+		}
+		_ = authSvc.Stop()
+		return nil, fmt.Errorf("building example index: %w", err)
+	}
+
+	if exampleIndex != nil {
+		b.log.Info("Semantic search example index built")
+	}
+
 	// Create tool registry and register tools
-	toolReg := b.buildToolRegistry(sandboxSvc)
+	toolReg := b.buildToolRegistry(sandboxSvc, exampleIndex)
 
 	// Create resource registry and register resources
 	resourceReg := b.buildResourceRegistry(cartographoorClient, schemaClient, toolReg)
@@ -143,14 +162,16 @@ func (b *Builder) buildAuth() (auth.SimpleService, error) {
 }
 
 // buildToolRegistry creates and populates the tool registry.
-func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service) tool.Registry {
+func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service, exampleIndex *resource.ExampleIndex) tool.Registry {
 	reg := tool.NewRegistry(b.log)
 
 	// Register execute_python tool
 	reg.Register(tool.NewExecutePythonTool(b.log, sandboxSvc, b.cfg))
 
-	// Register search_examples tool
-	reg.Register(tool.NewSearchExamplesTool(b.log))
+	// Register search_examples tool (requires example index)
+	if exampleIndex != nil {
+		reg.Register(tool.NewSearchExamplesTool(b.log, exampleIndex))
+	}
 
 	b.log.WithField("tool_count", len(reg.List())).Info("Tool registry built")
 
@@ -189,6 +210,34 @@ func (b *Builder) buildClickHouseSchema() resource.ClickHouseSchemaClient {
 		QueryTimeout:    resource.DefaultSchemaQueryTimeout,
 		Datasources:     datasources,
 	}, b.cfg.ClickHouse)
+}
+
+// buildExampleIndex creates the semantic search index for examples.
+// Returns nil if semantic search is disabled or model is not available.
+func (b *Builder) buildExampleIndex() (*resource.ExampleIndex, error) {
+	cfg := b.cfg.SemanticSearch
+	if !cfg.IsEnabled() {
+		b.log.Info("Semantic search is disabled")
+		return nil, nil
+	}
+
+	// Check if model file exists
+	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("embedding model not found at %s (run 'make download-model' to fetch it)", cfg.ModelPath)
+	}
+
+	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
+	if err != nil {
+		return nil, fmt.Errorf("creating embedder: %w", err)
+	}
+
+	index, err := resource.NewExampleIndex(b.log, embedder, resource.GetQueryExamples())
+	if err != nil {
+		_ = embedder.Close()
+		return nil, fmt.Errorf("building example index: %w", err)
+	}
+
+	return index, nil
 }
 
 // buildResourceRegistry creates and populates the resource registry.

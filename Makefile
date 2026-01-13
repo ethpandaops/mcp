@@ -1,4 +1,14 @@
-.PHONY: build test lint clean docker docker-push docker-sandbox test-sandbox run help
+.PHONY: build test lint clean docker docker-push docker-sandbox test-sandbox run help download-models clean-models
+
+# Embedding model and shared library configuration
+# Downloaded from HuggingFace and kelindar/search GitHub repo
+MODELS_DIR := ./models
+EMBEDDING_MODEL_PATH := $(MODELS_DIR)/MiniLM-L6-v2.Q8_0.gguf
+LLAMA_SO_PATH := $(MODELS_DIR)/libllama_go.so
+
+# Download URLs (using GitHub media server for LFS files)
+EMBEDDING_MODEL_URL := https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q8_0.gguf
+LLAMA_SO_URL := https://media.githubusercontent.com/media/kelindar/search/main/dist/linux-x64-avx/libllama_go.so
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -77,7 +87,7 @@ test-sandbox: build docker-sandbox ## Test sandbox execution (requires .env)
 		exit 1; \
 	fi
 
-run: build ## Run the server with stdio transport
+run: build download-models ## Run the server with stdio transport
 	./xatu-mcp serve
 
 run-sse: build ## Run the server with SSE transport
@@ -99,3 +109,21 @@ version: ## Show version info
 	@echo "Version:    $(VERSION)"
 	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Build Time: $(BUILD_TIME)"
+
+download-models: $(EMBEDDING_MODEL_PATH) $(LLAMA_SO_PATH) ## Download embedding model and shared library
+	@echo "All models downloaded to $(MODELS_DIR)"
+
+$(EMBEDDING_MODEL_PATH):
+	@mkdir -p $(MODELS_DIR)
+	@echo "Downloading embedding model from HuggingFace..."
+	@curl -L -o $(EMBEDDING_MODEL_PATH) $(EMBEDDING_MODEL_URL)
+	@echo "Model downloaded to $(EMBEDDING_MODEL_PATH)"
+
+$(LLAMA_SO_PATH):
+	@mkdir -p $(MODELS_DIR)
+	@echo "Downloading llama.cpp shared library from GitHub..."
+	@curl -L -o $(LLAMA_SO_PATH) $(LLAMA_SO_URL)
+	@echo "Shared library downloaded to $(LLAMA_SO_PATH)"
+
+clean-models: ## Clean downloaded models
+	rm -rf $(MODELS_DIR)

@@ -6,10 +6,44 @@
 # Run:
 #   docker run -p 2480:2480 -v /var/run/docker.sock:/var/run/docker.sock xatu-mcp:latest
 
-# Build stage
-FROM golang:1.24-alpine AS builder
+# =============================================================================
+# Stage 1: Build libllama_go.so for ARM64 (skipped on amd64)
+# =============================================================================
+FROM debian:bookworm-slim AS llama-builder
 
-RUN apk add --no-cache git ca-certificates
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git cmake g++ make curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Only build on ARM64 - on amd64 we'll download the prebuilt
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+    echo "Building libllama_go.so for ARM64..." && \
+    git clone --depth 1 --recurse-submodules https://github.com/kelindar/search.git && \
+    cd search && \
+    mkdir build && cd build && \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_NATIVE=OFF \
+        -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc .. && \
+    cmake --build . --config Release && \
+    find /build/search -name "libllama_go.so" -exec cp {} /build/libllama_go.so \; ; \
+    else \
+    echo "Skipping build on amd64 - will download prebuilt"; \
+    fi
+
+# =============================================================================
+# Stage 2: Go builder
+# =============================================================================
+FROM golang:1.24-bookworm AS builder
+
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -22,7 +56,7 @@ COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY internal/ internal/
 
-# Build with version info
+# Build with version info (CGO_ENABLED=0 works because kelindar/search uses purego)
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
@@ -33,20 +67,44 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -X github.com/ethpandaops/xatu-mcp/internal/version.BuildTime=${BUILD_TIME}" \
     -o xatu-mcp ./cmd/xatu-mcp
 
-# Runtime stage
-FROM alpine:3.19
+# Download embedding model (same for all architectures)
+RUN mkdir -p /assets && \
+    curl -L -o /assets/MiniLM-L6-v2.Q8_0.gguf \
+        https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q8_0.gguf
 
-# Install runtime dependencies for Docker access and health checks
-RUN apk add --no-cache ca-certificates docker-cli netcat-openbsd
+# Download prebuilt libllama_go.so for amd64, or copy from llama-builder for arm64
+COPY --from=llama-builder /build/libllama_go.so* /tmp/
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    echo "Downloading prebuilt libllama_go.so for amd64..." && \
+    curl -L -o /assets/libllama_go.so \
+        https://media.githubusercontent.com/media/kelindar/search/main/dist/linux-x64-avx/libllama_go.so; \
+    else \
+    echo "Using ARM64-built libllama_go.so..." && \
+    cp /tmp/libllama_go.so /assets/libllama_go.so; \
+    fi
+
+# =============================================================================
+# Stage 3: Runtime
+# =============================================================================
+FROM debian:bookworm-slim
+
+# Install runtime dependencies for Docker access, health checks, and llama.cpp
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates docker.io netcat-openbsd libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN adduser -D -s /bin/sh xatu && \
-    addgroup xatu docker 2>/dev/null || true
+RUN useradd -m -s /bin/bash xatu && \
+    usermod -aG docker xatu 2>/dev/null || true
 
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/xatu-mcp /usr/local/bin/xatu-mcp
+
+# Copy embedding model and llama.cpp shared library
+COPY --from=builder /assets/MiniLM-L6-v2.Q8_0.gguf /usr/share/xatu-mcp/
+COPY --from=builder /assets/libllama_go.so /lib/
 
 # Create directories
 RUN mkdir -p /config /shared /output && \
