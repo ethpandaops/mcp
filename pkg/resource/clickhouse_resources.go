@@ -52,12 +52,13 @@ func RegisterClickHouseSchemaResources(
 
 	// clickhouse://tables - List all tables across clusters
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "clickhouse://tables",
-			Name:        "ClickHouse Tables",
-			Description: "List all available ClickHouse tables across xatu clusters with brief schema info",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"clickhouse://tables",
+			"ClickHouse Tables",
+			mcp.WithResourceDescription("List all available ClickHouse tables across xatu clusters with brief schema info"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.7),
+		),
 		Handler: createTablesListHandler(client),
 	})
 
@@ -67,6 +68,7 @@ func RegisterClickHouseSchemaResources(
 		"ClickHouse Table Schema",
 		mcp.WithTemplateDescription("Full schema for a specific ClickHouse table including columns, types, comments, and available networks"),
 		mcp.WithTemplateMIMEType("application/json"),
+		mcp.WithTemplateAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.6),
 	)
 
 	reg.RegisterTemplate(TemplateResource{

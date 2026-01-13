@@ -59,23 +59,25 @@ func RegisterNetworksResources(log logrus.FieldLogger, reg Registry, client Cart
 
 	// Register networks://active - compact list of active networks
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "networks://active",
-			Name:        "Active Networks",
-			Description: "Compact list of active Ethereum networks and available devnet groups",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"networks://active",
+			"Active Networks",
+			mcp.WithResourceDescription("Compact list of active Ethereum networks and available devnet groups"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.7),
+		),
 		Handler: createActiveNetworksHandler(client),
 	})
 
 	// Register networks://all - all networks including inactive
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "networks://all",
-			Name:        "All Networks",
-			Description: "All Ethereum networks including inactive ones",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"networks://all",
+			"All Networks",
+			mcp.WithResourceDescription("All Ethereum networks including inactive ones"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.4),
+		),
 		Handler: createAllNetworksHandler(client),
 	})
 
@@ -86,6 +88,7 @@ func RegisterNetworksResources(log logrus.FieldLogger, reg Registry, client Cart
 			"Network or Group Details",
 			mcp.WithTemplateDescription("Get details for a specific network or all networks in a devnet group"),
 			mcp.WithTemplateMIMEType("application/json"),
+			mcp.WithTemplateAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.5),
 		),
 		Pattern: networkURIPattern,
 		Handler: createNetworkDetailHandler(log, client),

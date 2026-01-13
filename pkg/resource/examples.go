@@ -60,12 +60,13 @@ func RegisterExamplesResources(log logrus.FieldLogger, reg Registry) {
 
 	// Register static examples://queries resource
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "examples://queries",
-			Name:        "Query Examples",
-			Description: "Common ClickHouse query patterns organized by use case",
-			MIMEType:    "application/json",
-		},
+		Resource: mcp.NewResource(
+			"examples://queries",
+			"Query Examples",
+			mcp.WithResourceDescription("Common ClickHouse query patterns organized by use case"),
+			mcp.WithMIMEType("application/json"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.6),
+		),
 		Handler: func(_ context.Context, _ string) (string, error) {
 			response := examplesResponse{
 				Description: "Common ClickHouse query patterns for Xatu data analysis",

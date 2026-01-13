@@ -76,12 +76,13 @@ func RegisterGettingStartedResources(
 	log = log.WithField("resource", "getting_started")
 
 	reg.RegisterStatic(StaticResource{
-		Resource: mcp.Resource{
-			URI:         "xatu://getting-started",
-			Name:        "Xatu Getting Started Guide",
-			Description: "Essential guide for querying Ethereum data with Xatu - read this first!",
-			MIMEType:    "text/markdown",
-		},
+		Resource: mcp.NewResource(
+			"xatu://getting-started",
+			"Xatu Getting Started Guide",
+			mcp.WithResourceDescription("Essential guide for querying Ethereum data with Xatu - read this first!"),
+			mcp.WithMIMEType("text/markdown"),
+			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 1.0),
+		),
 		Handler: createGettingStartedHandler(reg, toolReg),
 	})
 
