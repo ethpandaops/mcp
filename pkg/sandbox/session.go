@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,7 +123,7 @@ func (m *SessionManager) Create(containerID string, env map[string]string, owner
 
 	now := time.Now()
 	session := &Session{
-		ID:          uuid.New().String(),
+		ID:          strings.ReplaceAll(uuid.New().String(), "-", "")[:12], // 12-char hex: 281 trillion possibilities
 		OwnerID:     ownerID,
 		ContainerID: containerID,
 		CreatedAt:   now,

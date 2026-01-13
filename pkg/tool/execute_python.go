@@ -261,8 +261,8 @@ func formatExecutionResult(result *sandbox.ExecutionResult, cfg *config.Config) 
 		parts = append(parts, sessionInfo)
 	}
 
-	parts = append(parts, fmt.Sprintf("[exit=%d duration=%.2fs id=%s]",
-		result.ExitCode, result.DurationSeconds, result.ExecutionID))
+	parts = append(parts, fmt.Sprintf("[exit=%d duration=%.2fs]",
+		result.ExitCode, result.DurationSeconds))
 
 	// Add note about localhost URLs if storage is configured with localhost.
 	if cfg.Storage != nil && strings.Contains(cfg.Storage.PublicURLPrefix, "localhost") {
