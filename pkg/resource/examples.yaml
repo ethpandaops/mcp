@@ -1104,6 +1104,45 @@ data_column_sidecars:
         GROUP BY column_index
         ORDER BY column_index
 
+    - name: Node custody count per epoch
+      description: Calculate how many columns each node is responsible for per epoch. Identifies supernodes (128 custody) vs regular nodes.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          node_id,
+          meta_consensus_implementation AS client,
+          epoch,
+          COUNT(DISTINCT column_index) AS custody_count,
+          CASE
+            WHEN COUNT(DISTINCT column_index) >= 128 THEN 'supernode'
+            WHEN COUNT(DISTINCT column_index) >= 64 THEN 'high_custody'
+            ELSE 'normal'
+          END AS node_type
+        FROM {network}.fct_block_data_column_sidecar_first_seen_by_node FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 1 DAY
+        GROUP BY node_id, meta_consensus_implementation, epoch
+        ORDER BY custody_count DESC
+        LIMIT 100
+
+    - name: Column spread per slot
+      description: Measure time spread between first and last column received per slot per node. High spread indicates slow column acquisition.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          slot,
+          node_id,
+          meta_consensus_implementation AS client,
+          MIN(seen_slot_start_diff) AS first_column_ms,
+          MAX(seen_slot_start_diff) AS last_column_ms,
+          MAX(seen_slot_start_diff) - MIN(seen_slot_start_diff) AS spread_ms,
+          COUNT(DISTINCT column_index) AS columns_received
+        FROM {network}.fct_block_data_column_sidecar_first_seen_by_node FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 1 HOUR
+        GROUP BY slot, node_id, meta_consensus_implementation
+        HAVING columns_received > 1
+        ORDER BY spread_ms DESC
+        LIMIT 100
+
 engine_api:
   name: Engine API (CL-EL Communication)
   description: Queries for analyzing consensus-execution layer communication timing and performance
