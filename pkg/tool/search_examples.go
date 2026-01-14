@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -14,42 +13,28 @@ import (
 )
 
 const (
-	// SearchExamplesToolName is the name of the search_examples tool.
 	SearchExamplesToolName = "search_examples"
-
-	// DefaultSearchLimit is the default number of results to return.
-	DefaultSearchLimit = 10
-
-	// MaxSearchLimit is the maximum number of results allowed.
-	MaxSearchLimit = 50
-
-	// QueryPreviewMaxLength is the maximum length for query preview.
-	QueryPreviewMaxLength = 150
-
-	// QueryPreviewMaxLines is the maximum number of lines for query preview.
-	QueryPreviewMaxLines = 3
+	DefaultSearchLimit     = 3
+	MaxSearchLimit         = 10
+	MinSimilarityScore     = 0.3
 )
 
-// searchExamplesDescription describes the search_examples tool.
-const searchExamplesDescription = `Search ClickHouse query examples by keyword or regex.
+const searchExamplesDescription = `Search ClickHouse query examples using semantic search.
 
-Returns matching examples with truncated query previews. Read examples://queries for full SQL.
+Returns matching examples with full SQL queries. Each result includes target cluster (xatu vs xatu-cbt) - see xatu://getting-started for syntax differences.
 
-Examples:
-- search_examples(query="block") - Find block-related examples
-- search_examples(query="validator", category="validators") - Filter by category`
+Examples: search_examples(query="block"), search_examples(query="validator", category="validators")`
 
-// SearchExampleResult represents a single matching example with category context.
 type SearchExampleResult struct {
-	CategoryKey  string `json:"category_key"`
-	CategoryName string `json:"category_name"`
-	ExampleName  string `json:"example_name"`
-	Description  string `json:"description"`
-	QueryPreview string `json:"query_preview"`
-	Cluster      string `json:"cluster"`
+	CategoryKey     string  `json:"category_key"`
+	CategoryName    string  `json:"category_name"`
+	ExampleName     string  `json:"example_name"`
+	Description     string  `json:"description"`
+	Query           string  `json:"query"`
+	TargetCluster   string  `json:"target_cluster"`
+	SimilarityScore float64 `json:"similarity_score"`
 }
 
-// SearchExamplesResponse is the complete search response.
 type SearchExamplesResponse struct {
 	Query               string                 `json:"query"`
 	CategoryFilter      string                 `json:"category_filter,omitempty"`
@@ -58,8 +43,17 @@ type SearchExamplesResponse struct {
 	AvailableCategories []string               `json:"available_categories"`
 }
 
-// NewSearchExamplesTool creates the search_examples tool definition.
-func NewSearchExamplesTool(log logrus.FieldLogger) Definition {
+type searchExamplesHandler struct {
+	log   logrus.FieldLogger
+	index *resource.ExampleIndex
+}
+
+func NewSearchExamplesTool(log logrus.FieldLogger, index *resource.ExampleIndex) Definition {
+	h := &searchExamplesHandler{
+		log:   log.WithField("tool", SearchExamplesToolName),
+		index: index,
+	}
+
 	return Definition{
 		Tool: mcp.Tool{
 			Name:        SearchExamplesToolName,
@@ -69,15 +63,11 @@ func NewSearchExamplesTool(log logrus.FieldLogger) Definition {
 				Properties: map[string]any{
 					"query": map[string]any{
 						"type":        "string",
-						"description": "Search term: keyword, regex pattern, or category name",
+						"description": "Search term or phrase to find semantically similar examples",
 					},
 					"category": map[string]any{
 						"type":        "string",
 						"description": "Optional: filter to a specific category (e.g., 'attestations', 'block_events')",
-					},
-					"case_sensitive": map[string]any{
-						"type":        "boolean",
-						"description": "Enable case-sensitive matching (default: false)",
 					},
 					"limit": map[string]any{
 						"type":        "integer",
@@ -89,179 +79,94 @@ func NewSearchExamplesTool(log logrus.FieldLogger) Definition {
 				Required: []string{"query"},
 			},
 		},
-		Handler: newSearchExamplesHandler(log),
+		Handler: h.handle,
 	}
 }
 
-// newSearchExamplesHandler creates the handler function for search_examples.
-func newSearchExamplesHandler(log logrus.FieldLogger) Handler {
-	handlerLog := log.WithField("tool", SearchExamplesToolName)
+func (h *searchExamplesHandler) handle(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.log.Debug("Handling search_examples request")
 
-	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		handlerLog.Debug("Handling search_examples request")
+	query := request.GetString("query", "")
+	if query == "" {
+		return CallToolError(fmt.Errorf("query is required and cannot be empty")), nil
+	}
 
-		// Extract parameters
-		query := request.GetString("query", "")
-		if query == "" {
-			return CallToolError(fmt.Errorf("query is required and cannot be empty")), nil
+	categoryFilter := request.GetString("category", "")
+
+	limit := int(request.GetInt("limit", DefaultSearchLimit))
+	if limit <= 0 {
+		limit = DefaultSearchLimit
+	}
+
+	if limit > MaxSearchLimit {
+		limit = MaxSearchLimit
+	}
+
+	examples := resource.GetQueryExamples()
+	categories := resource.GetQueryCategories()
+
+	if categoryFilter != "" {
+		if _, ok := examples[categoryFilter]; !ok {
+			return CallToolError(fmt.Errorf(
+				"unknown category: %q. Available categories: %s",
+				categoryFilter,
+				strings.Join(categories, ", "),
+			)), nil
 		}
+	}
 
-		categoryFilter := request.GetString("category", "")
-		caseSensitive := request.GetBool("case_sensitive", false)
+	sort.Strings(categories)
 
-		limit := int(request.GetInt("limit", DefaultSearchLimit))
-		if limit <= 0 {
-			limit = DefaultSearchLimit
-		}
+	results, err := h.index.Search(query, limit)
+	if err != nil {
+		return CallToolError(fmt.Errorf("search failed: %w", err)), nil
+	}
 
-		if limit > MaxSearchLimit {
-			limit = MaxSearchLimit
-		}
-
-		// Validate category filter if provided
-		examples := resource.GetQueryExamples()
-		categories := resource.GetQueryCategories()
-
-		if categoryFilter != "" {
-			if _, ok := examples[categoryFilter]; !ok {
-				return CallToolError(fmt.Errorf(
-					"unknown category: %q. Available categories: %s",
-					categoryFilter,
-					strings.Join(categories, ", "),
-				)), nil
+	if categoryFilter != "" {
+		filtered := make([]resource.SearchResult, 0)
+		for _, r := range results {
+			if r.CategoryKey == categoryFilter {
+				filtered = append(filtered, r)
 			}
 		}
 
-		// Compile search pattern
-		pattern, err := compileSearchPattern(query, caseSensitive)
-		if err != nil {
-			// This shouldn't happen since we fallback to literal search
-			return CallToolError(fmt.Errorf("invalid search pattern: %w", err)), nil
-		}
-
-		// Perform search
-		results := searchExamples(pattern, examples, categoryFilter, limit)
-
-		// Sort categories for consistent output
-		sort.Strings(categories)
-
-		response := &SearchExamplesResponse{
-			Query:               query,
-			CategoryFilter:      categoryFilter,
-			TotalMatches:        len(results),
-			Results:             results,
-			AvailableCategories: categories,
-		}
-
-		data, err := json.MarshalIndent(response, "", "  ")
-		if err != nil {
-			return CallToolError(fmt.Errorf("marshaling response: %w", err)), nil
-		}
-
-		handlerLog.WithFields(logrus.Fields{
-			"query":   query,
-			"matches": len(results),
-		}).Debug("Search completed")
-
-		return CallToolSuccess(string(data)), nil
-	}
-}
-
-// compileSearchPattern compiles a search pattern with optional case sensitivity.
-// If the pattern is invalid regex, it falls back to a literal string search.
-func compileSearchPattern(query string, caseSensitive bool) (*regexp.Regexp, error) {
-	pattern := query
-	if !caseSensitive {
-		pattern = "(?i)" + pattern
+		results = filtered
 	}
 
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		// Fallback: escape regex special chars and treat as literal
-		escaped := regexp.QuoteMeta(query)
-		if !caseSensitive {
-			escaped = "(?i)" + escaped
-		}
-
-		return regexp.Compile(escaped)
-	}
-
-	return re, nil
-}
-
-// truncateQuery truncates a SQL query to a preview suitable for search results.
-// Returns first few lines up to maxLines and maxLength.
-func truncateQuery(query string, maxLines, maxLength int) string {
-	lines := strings.Split(strings.TrimSpace(query), "\n")
-
-	// Take first maxLines lines
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-	}
-
-	result := strings.Join(lines, "\n")
-
-	// Truncate to maxLength
-	if len(result) > maxLength {
-		result = result[:maxLength] + "..."
-	} else if len(strings.Split(strings.TrimSpace(query), "\n")) > maxLines {
-		result += "..."
-	}
-
-	return result
-}
-
-// searchExamples searches through examples and returns matching results.
-func searchExamples(
-	pattern *regexp.Regexp,
-	examples map[string]resource.QueryCategory,
-	categoryFilter string,
-	limit int,
-) []*SearchExampleResult {
-	results := make([]*SearchExampleResult, 0, limit)
-
-	// Sort category keys for consistent ordering
-	categoryKeys := make([]string, 0, len(examples))
-	for k := range examples {
-		categoryKeys = append(categoryKeys, k)
-	}
-
-	sort.Strings(categoryKeys)
-
-	for _, categoryKey := range categoryKeys {
-		category := examples[categoryKey]
-
-		// Skip if category filter is set and doesn't match
-		if categoryFilter != "" && categoryKey != categoryFilter {
+	searchResults := make([]*SearchExampleResult, 0, len(results))
+	for _, r := range results {
+		if r.Score < MinSimilarityScore {
 			continue
 		}
 
-		// Check if category itself matches
-		categoryMatches := pattern.MatchString(category.Name) || pattern.MatchString(category.Description)
-
-		for _, example := range category.Examples {
-			// Check each searchable field
-			matches := pattern.MatchString(example.Name) ||
-				pattern.MatchString(example.Description) ||
-				pattern.MatchString(example.Query) ||
-				categoryMatches
-
-			if matches {
-				results = append(results, &SearchExampleResult{
-					CategoryKey:  categoryKey,
-					CategoryName: category.Name,
-					ExampleName:  example.Name,
-					Description:  example.Description,
-					QueryPreview: truncateQuery(example.Query, QueryPreviewMaxLines, QueryPreviewMaxLength),
-					Cluster:      example.Cluster,
-				})
-
-				if len(results) >= limit {
-					return results
-				}
-			}
-		}
+		searchResults = append(searchResults, &SearchExampleResult{
+			CategoryKey:     r.CategoryKey,
+			CategoryName:    r.CategoryName,
+			ExampleName:     r.Example.Name,
+			Description:     r.Example.Description,
+			Query:           r.Example.Query,
+			TargetCluster:   r.Example.Cluster,
+			SimilarityScore: r.Score,
+		})
 	}
 
-	return results
+	response := &SearchExamplesResponse{
+		Query:               query,
+		CategoryFilter:      categoryFilter,
+		TotalMatches:        len(searchResults),
+		Results:             searchResults,
+		AvailableCategories: categories,
+	}
+
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return CallToolError(fmt.Errorf("marshaling response: %w", err)), nil
+	}
+
+	h.log.WithFields(logrus.Fields{
+		"query":   query,
+		"matches": len(searchResults),
+	}).Debug("Search completed")
+
+	return CallToolSuccess(string(data)), nil
 }

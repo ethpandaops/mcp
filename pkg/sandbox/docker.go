@@ -35,6 +35,18 @@ const (
 	LabelOwnerID = "io.xatu-mcp.owner-id"
 )
 
+// parseContainerCreatedAt extracts the creation time from container labels.
+// Falls back to Docker's created timestamp if the label is missing or invalid.
+func parseContainerCreatedAt(labels map[string]string, dockerCreated int64) time.Time {
+	if createdAtStr, ok := labels[LabelCreatedAt]; ok {
+		if createdAtUnix, err := strconv.ParseInt(createdAtStr, 10, 64); err == nil {
+			return time.Unix(createdAtUnix, 0)
+		}
+	}
+
+	return time.Unix(dockerCreated, 0)
+}
+
 // SecurityConfigFunc is a function that returns security configuration.
 type SecurityConfigFunc func(memoryLimit string, cpuLimit float64) (*SecurityConfig, error)
 
@@ -65,10 +77,12 @@ func NewDockerBackend(cfg config.SandboxConfig, log logrus.FieldLogger) (*Docker
 		securityConfigFunc: DefaultSecurityConfig,
 	}
 
-	// Create session manager with cleanup callback.
+	// Create session manager with callbacks for container queries and cleanup.
 	backend.sessionManager = NewSessionManager(
 		cfg.Sessions,
 		log,
+		backend.getSessionContainer,
+		backend.listAllSessionContainers,
 		func(ctx context.Context, containerID string) error {
 			if backend.client == nil {
 				return nil
@@ -308,25 +322,34 @@ func (b *DockerBackend) executeWithNewSession(ctx context.Context, req ExecuteRe
 		timeout = time.Duration(b.cfg.Timeout) * time.Second
 	}
 
-	log := b.log.WithField("mode", "new-session")
+	// Generate session ID upfront so it can be stored in container labels.
+	sessionID := b.sessionManager.GenerateSessionID()
+
+	log := b.log.WithFields(logrus.Fields{
+		"mode":       "new-session",
+		"session_id": sessionID,
+	})
 	log.Debug("Creating new session container")
 
-	// Create the session container.
-	containerID, err := b.createSessionContainer(ctx, req.Env, req.OwnerID)
+	// Create the session container with session ID in labels.
+	containerID, err := b.createSessionContainer(ctx, sessionID, req.Env, req.OwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("creating session container: %w", err)
 	}
 
-	// Register the session.
-	session, err := b.sessionManager.Create(containerID, req.Env, req.OwnerID)
-	if err != nil {
-		// Cleanup the container if session creation fails.
-		_ = b.forceRemoveContainer(ctx, containerID)
-		return nil, fmt.Errorf("creating session: %w", err)
-	}
+	// Record initial access time for TTL tracking.
+	b.sessionManager.RecordAccess(sessionID)
 
-	log = log.WithField("session_id", session.ID)
 	log.Info("Created new session")
+
+	// Build session object for execution.
+	session := &Session{
+		ID:          sessionID,
+		OwnerID:     req.OwnerID,
+		ContainerID: containerID,
+		CreatedAt:   time.Now(),
+		LastUsed:    time.Now(),
+	}
 
 	// Execute the code in the session.
 	result, err := b.execInContainer(ctx, session, req.Code, timeout)
@@ -335,8 +358,8 @@ func (b *DockerBackend) executeWithNewSession(ctx context.Context, req ExecuteRe
 	}
 
 	// Populate session info.
-	result.SessionID = session.ID
-	result.SessionTTLRemaining = b.sessionManager.TTLRemaining(session.ID)
+	result.SessionID = sessionID
+	result.SessionTTLRemaining = b.sessionManager.TTLRemaining(sessionID)
 	result.SessionFiles = b.collectSessionFiles(ctx, containerID)
 
 	return result, nil
@@ -355,7 +378,7 @@ func (b *DockerBackend) executeInSession(ctx context.Context, req ExecuteRequest
 	})
 
 	// Get the session (this also updates LastUsed and verifies ownership).
-	session, err := b.sessionManager.Get(req.SessionID, req.OwnerID)
+	session, err := b.sessionManager.Get(ctx, req.SessionID, req.OwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("getting session: %w", err)
 	}
@@ -377,7 +400,8 @@ func (b *DockerBackend) executeInSession(ctx context.Context, req ExecuteRequest
 }
 
 // createSessionContainer creates a long-running container for session use.
-func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[string]string, ownerID string) (string, error) {
+// sessionID is stored in container labels for stateless session recovery.
+func (b *DockerBackend) createSessionContainer(ctx context.Context, sessionID string, env map[string]string, ownerID string) (string, error) {
 	// Merge environment variables with defaults.
 	containerEnv := SandboxEnvDefaults()
 
@@ -392,8 +416,10 @@ func (b *DockerBackend) createSessionContainer(ctx context.Context, env map[stri
 	}
 
 	// Build labels for container identification and lifecycle management.
+	// Session ID is stored in labels so sessions survive server restarts.
 	labels := map[string]string{
 		LabelManaged:   "true",
+		LabelSessionID: sessionID,
 		LabelCreatedAt: strconv.FormatInt(time.Now().Unix(), 10),
 	}
 
@@ -893,6 +919,78 @@ func (b *DockerBackend) forceRemoveContainer(ctx context.Context, containerID st
 	return nil
 }
 
+// getSessionContainer queries Docker for a session container by session ID.
+// Returns nil if not found.
+func (b *DockerBackend) getSessionContainer(ctx context.Context, sessionID string) (*SessionContainer, error) {
+	if b.client == nil {
+		return nil, fmt.Errorf("docker client not initialized")
+	}
+
+	// Filter by session ID label.
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", LabelManaged+"=true")
+	filterArgs.Add("label", LabelSessionID+"="+sessionID)
+
+	containers, err := b.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filterArgs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing containers: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return nil, nil
+	}
+
+	c := containers[0]
+
+	return &SessionContainer{
+		ContainerID: c.ID,
+		SessionID:   sessionID,
+		OwnerID:     c.Labels[LabelOwnerID],
+		CreatedAt:   parseContainerCreatedAt(c.Labels, c.Created),
+	}, nil
+}
+
+// listAllSessionContainers queries Docker for all session containers.
+func (b *DockerBackend) listAllSessionContainers(ctx context.Context) ([]*SessionContainer, error) {
+	if b.client == nil {
+		return nil, fmt.Errorf("docker client not initialized")
+	}
+
+	// Filter by managed label and session ID label (only session containers have session IDs).
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", LabelManaged+"=true")
+	filterArgs.Add("label", LabelSessionID)
+
+	containers, err := b.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filterArgs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing containers: %w", err)
+	}
+
+	result := make([]*SessionContainer, 0, len(containers))
+
+	for _, c := range containers {
+		sessionID := c.Labels[LabelSessionID]
+		if sessionID == "" {
+			continue
+		}
+
+		result = append(result, &SessionContainer{
+			ContainerID: c.ID,
+			SessionID:   sessionID,
+			OwnerID:     c.Labels[LabelOwnerID],
+			CreatedAt:   parseContainerCreatedAt(c.Labels, c.Created),
+		})
+	}
+
+	return result, nil
+}
+
 // cleanupExpiredContainers removes xatu-mcp containers that have exceeded max session duration.
 // This handles orphaned containers from previous server instances that were killed abruptly.
 func (b *DockerBackend) cleanupExpiredContainers(ctx context.Context) error {
@@ -921,29 +1019,9 @@ func (b *DockerBackend) cleanupExpiredContainers(ctx context.Context) error {
 	var cleaned int
 
 	for _, c := range containers {
-		// Check the created-at label for age.
-		createdAtStr, ok := c.Labels[LabelCreatedAt]
-		if !ok {
-			// No timestamp label - check Docker's created time instead.
-			// This handles containers created before we added labels.
-			createdAt := time.Unix(c.Created, 0)
-			if now.Sub(createdAt) <= maxAge {
-				continue
-			}
-		} else {
-			createdAtUnix, err := strconv.ParseInt(createdAtStr, 10, 64)
-			if err != nil {
-				b.log.WithFields(logrus.Fields{
-					"container_id": c.ID[:12],
-					"created_at":   createdAtStr,
-				}).Warn("Invalid created-at label, skipping")
-
-				continue
-			}
-
-			if now.Sub(time.Unix(createdAtUnix, 0)) <= maxAge {
-				continue
-			}
+		createdAt := parseContainerCreatedAt(c.Labels, c.Created)
+		if now.Sub(createdAt) <= maxAge {
+			continue
 		}
 
 		// Container is expired, remove it.

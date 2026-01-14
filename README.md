@@ -2,7 +2,7 @@
 
 An MCP server that provides AI assistants with Ethereum network analytics capabilities via [Xatu](https://github.com/ethpandaops/xatu) data.
 
-Agents execute Python code in sandboxed containers with access to ClickHouse blockchain data, Prometheus metrics, Loki logs, and S3-compatible storage for outputs. All data queries are proxied through Grafana using datasource UIDs.
+Agents execute Python code in sandboxed containers with direct access to ClickHouse blockchain data, Prometheus metrics, Loki logs, and S3-compatible storage for outputs.
 
 Read more: https://www.anthropic.com/engineering/code-execution-with-mcp
 
@@ -11,7 +11,7 @@ Read more: https://www.anthropic.com/engineering/code-execution-with-mcp
 ```bash
 # Configure
 cp config.example.yaml config.yaml
-# Edit config.yaml with your Grafana URL and service token
+# Edit config.yaml with your datasource credentials (ClickHouse, Prometheus, Loki)
 
 # Run (builds sandbox image, starts MinIO + MCP server)
 docker-compose up -d
@@ -40,7 +40,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `execute_python` | Execute Python in a sandbox with the `xatu` library |
 | `search_examples` | Search for query examples and patterns |
 
-Resources are available for datasource discovery (`datasources://`), network info (`networks://`), table schemas (`clickhouse://`), and API docs (`api://xatu`).
+Resources are available for getting started (`xatu://getting-started`), datasource discovery (`datasources://`), network info (`networks://`), table schemas (`clickhouse://`), and Python API docs (`python://xatu`).
 
 ## Development
 

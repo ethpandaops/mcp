@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/xatu-mcp/pkg/auth"
 	"github.com/ethpandaops/xatu-mcp/pkg/config"
-	"github.com/ethpandaops/xatu-mcp/pkg/grafana"
+	"github.com/ethpandaops/xatu-mcp/pkg/embedding"
 	"github.com/ethpandaops/xatu-mcp/pkg/resource"
 	"github.com/ethpandaops/xatu-mcp/pkg/sandbox"
 	"github.com/ethpandaops/xatu-mcp/pkg/tool"
@@ -21,7 +22,6 @@ type Dependencies struct {
 	ToolRegistry     tool.Registry
 	ResourceRegistry resource.Registry
 	Sandbox          sandbox.Service
-	Grafana          grafana.Client
 	Auth             auth.SimpleService
 }
 
@@ -56,19 +56,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 
 	b.log.WithField("backend", sandboxSvc.Name()).Info("Sandbox service started")
 
-	// Create Grafana client
-	grafanaClient := b.buildGrafana()
-
-	// Start the Grafana client to initialize and discover datasources
-	if err := grafanaClient.Start(ctx); err != nil {
-		// Clean up sandbox on failure
-		_ = sandboxSvc.Stop(ctx)
-
-		return nil, fmt.Errorf("starting grafana client: %w", err)
-	}
-
-	b.log.Info("Grafana client started")
-
 	// Create cartographoor client for network discovery
 	cartographoorClient := b.buildCartographoor()
 
@@ -76,7 +63,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	if err := cartographoorClient.Start(ctx); err != nil {
 		// Clean up on failure
 		_ = sandboxSvc.Stop(ctx)
-		_ = grafanaClient.Stop()
 
 		return nil, fmt.Errorf("starting cartographoor client: %w", err)
 	}
@@ -84,14 +70,13 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	b.log.Info("Cartographoor client started")
 
 	// Create ClickHouse schema client for table discovery (optional)
-	schemaClient := b.buildClickHouseSchema(grafanaClient)
+	schemaClient := b.buildClickHouseSchema()
 
 	// Start the schema client if configured
 	if schemaClient != nil {
 		if err := schemaClient.Start(ctx); err != nil {
 			// Clean up on failure
 			_ = sandboxSvc.Stop(ctx)
-			_ = grafanaClient.Stop()
 			_ = cartographoorClient.Stop()
 
 			return nil, fmt.Errorf("starting clickhouse schema client: %w", err)
@@ -105,7 +90,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	if err != nil {
 		// Clean up on failure
 		_ = sandboxSvc.Stop(ctx)
-		_ = grafanaClient.Stop()
 		_ = cartographoorClient.Stop()
 
 		if schemaClient != nil {
@@ -119,7 +103,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	if err := authSvc.Start(ctx); err != nil {
 		// Clean up on failure
 		_ = sandboxSvc.Stop(ctx)
-		_ = grafanaClient.Stop()
 		_ = cartographoorClient.Stop()
 
 		if schemaClient != nil {
@@ -133,11 +116,28 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		b.log.Info("Auth service started")
 	}
 
+	// Create embedding model and example index for semantic search
+	exampleIndex, err := b.buildExampleIndex()
+	if err != nil {
+		// Clean up on failure
+		_ = sandboxSvc.Stop(ctx)
+		_ = cartographoorClient.Stop()
+		if schemaClient != nil {
+			_ = schemaClient.Stop()
+		}
+		_ = authSvc.Stop()
+		return nil, fmt.Errorf("building example index: %w", err)
+	}
+
+	if exampleIndex != nil {
+		b.log.Info("Semantic search example index built")
+	}
+
 	// Create tool registry and register tools
-	toolReg := b.buildToolRegistry(sandboxSvc)
+	toolReg := b.buildToolRegistry(sandboxSvc, exampleIndex)
 
 	// Create resource registry and register resources
-	resourceReg := b.buildResourceRegistry(grafanaClient, cartographoorClient, schemaClient, toolReg)
+	resourceReg := b.buildResourceRegistry(cartographoorClient, schemaClient, toolReg)
 
 	// Create and return the server service
 	return NewService(
@@ -147,7 +147,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		toolReg,
 		resourceReg,
 		sandboxSvc,
-		grafanaClient,
 		authSvc,
 	), nil
 }
@@ -157,40 +156,22 @@ func (b *Builder) buildSandbox() (sandbox.Service, error) {
 	return sandbox.New(b.cfg.Sandbox, b.log)
 }
 
-// buildGrafana creates the Grafana client.
-func (b *Builder) buildGrafana() grafana.Client {
-	// Convert config datasource configs to grafana package format
-	datasources := make([]grafana.DatasourceConfig, len(b.cfg.Grafana.Datasources))
-	for i, ds := range b.cfg.Grafana.Datasources {
-		datasources[i] = grafana.DatasourceConfig{
-			UID:         ds.UID,
-			Description: ds.Description,
-		}
-	}
-
-	return grafana.NewClient(b.log, &grafana.Config{
-		URL:            b.cfg.Grafana.URL,
-		ServiceToken:   b.cfg.Grafana.ServiceToken,
-		Timeout:        b.cfg.Grafana.Timeout,
-		DatasourceUIDs: b.cfg.Grafana.DatasourceUIDs,
-		Datasources:    datasources,
-	})
-}
-
 // buildAuth creates the auth service.
 func (b *Builder) buildAuth() (auth.SimpleService, error) {
 	return auth.NewSimpleService(b.log, b.cfg.Auth, b.cfg.Server.BaseURL)
 }
 
 // buildToolRegistry creates and populates the tool registry.
-func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service) tool.Registry {
+func (b *Builder) buildToolRegistry(sandboxSvc sandbox.Service, exampleIndex *resource.ExampleIndex) tool.Registry {
 	reg := tool.NewRegistry(b.log)
 
 	// Register execute_python tool
 	reg.Register(tool.NewExecutePythonTool(b.log, sandboxSvc, b.cfg))
 
-	// Register search_examples tool
-	reg.Register(tool.NewSearchExamplesTool(b.log))
+	// Register search_examples tool (requires example index)
+	if exampleIndex != nil {
+		reg.Register(tool.NewSearchExamplesTool(b.log, exampleIndex))
+	}
 
 	b.log.WithField("tool_count", len(reg.List())).Info("Tool registry built")
 
@@ -208,7 +189,7 @@ func (b *Builder) buildCartographoor() resource.CartographoorClient {
 
 // buildClickHouseSchema creates the ClickHouse schema client for table discovery.
 // Returns nil if schema discovery is not configured.
-func (b *Builder) buildClickHouseSchema(grafanaClient grafana.Client) resource.ClickHouseSchemaClient {
+func (b *Builder) buildClickHouseSchema() resource.ClickHouseSchemaClient {
 	if !b.cfg.SchemaDiscovery.IsEnabled() {
 		b.log.Info("Schema discovery is disabled (no datasources configured)")
 
@@ -216,10 +197,10 @@ func (b *Builder) buildClickHouseSchema(grafanaClient grafana.Client) resource.C
 	}
 
 	// Convert config datasource mappings to resource package format
-	datasources := make([]resource.DatasourceMapping, len(b.cfg.SchemaDiscovery.Datasources))
+	datasources := make([]resource.SchemaDiscoveryDatasource, len(b.cfg.SchemaDiscovery.Datasources))
 	for i, ds := range b.cfg.SchemaDiscovery.Datasources {
-		datasources[i] = resource.DatasourceMapping{
-			UID:     ds.UID,
+		datasources[i] = resource.SchemaDiscoveryDatasource{
+			Name:    ds.Name,
 			Cluster: ds.Cluster,
 		}
 	}
@@ -228,12 +209,39 @@ func (b *Builder) buildClickHouseSchema(grafanaClient grafana.Client) resource.C
 		RefreshInterval: b.cfg.SchemaDiscovery.RefreshInterval,
 		QueryTimeout:    resource.DefaultSchemaQueryTimeout,
 		Datasources:     datasources,
-	}, grafanaClient)
+	}, b.cfg.ClickHouse)
+}
+
+// buildExampleIndex creates the semantic search index for examples.
+// Returns nil if semantic search is disabled or model is not available.
+func (b *Builder) buildExampleIndex() (*resource.ExampleIndex, error) {
+	cfg := b.cfg.SemanticSearch
+	if !cfg.IsEnabled() {
+		b.log.Info("Semantic search is disabled")
+		return nil, nil
+	}
+
+	// Check if model file exists
+	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("embedding model not found at %s (run 'make download-model' to fetch it)", cfg.ModelPath)
+	}
+
+	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
+	if err != nil {
+		return nil, fmt.Errorf("creating embedder: %w", err)
+	}
+
+	index, err := resource.NewExampleIndex(b.log, embedder, resource.GetQueryExamples())
+	if err != nil {
+		_ = embedder.Close()
+		return nil, fmt.Errorf("building example index: %w", err)
+	}
+
+	return index, nil
 }
 
 // buildResourceRegistry creates and populates the resource registry.
 func (b *Builder) buildResourceRegistry(
-	grafanaClient grafana.Client,
 	cartographoorClient resource.CartographoorClient,
 	schemaClient resource.ClickHouseSchemaClient,
 	toolReg tool.Registry,
@@ -241,7 +249,7 @@ func (b *Builder) buildResourceRegistry(
 	reg := resource.NewRegistry(b.log)
 
 	// Register datasources resources
-	resource.RegisterDatasourcesResources(b.log, reg, grafanaClient)
+	resource.RegisterDatasourcesResources(b.log, reg, b.cfg.ClickHouse, b.cfg.Prometheus, b.cfg.Loki)
 
 	// Register examples resources
 	resource.RegisterExamplesResources(b.log, reg)
@@ -249,8 +257,8 @@ func (b *Builder) buildResourceRegistry(
 	// Register networks resources
 	resource.RegisterNetworksResources(b.log, reg, cartographoorClient)
 
-	// Register API resources
-	resource.RegisterAPIResources(b.log, reg)
+	// Register Python library resources
+	resource.RegisterPythonResources(b.log, reg)
 
 	// Register getting-started resource (needs tool registry for dynamic content)
 	resource.RegisterGettingStartedResources(b.log, reg, toolReg)
