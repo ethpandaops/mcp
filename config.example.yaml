@@ -109,6 +109,8 @@ sandbox:
   #   max_sessions: 10  # max concurrent sessions (default: 10)
 
 # S3-compatible storage for output files
+# IMPORTANT: The endpoint must be reachable from sandbox containers (on the sandbox network),
+# not from the host. Use Docker service names (e.g., http://minio:9000), not localhost URLs.
 storage:
   endpoint: "${S3_ENDPOINT}"  # e.g., http://minio:9000 or https://xxx.r2.cloudflarestorage.com
   access_key: "${S3_ACCESS_KEY}"
