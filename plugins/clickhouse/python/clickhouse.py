@@ -4,7 +4,7 @@ This module provides functions to query ClickHouse clusters directly
 using the clickhouse-connect library.
 
 Example:
-    from xatu import clickhouse
+    from ethpandaops import clickhouse
 
     # List available ClickHouse clusters
     clusters = clickhouse.list_datasources()
@@ -69,16 +69,16 @@ def _load_clusters() -> None:
     if _CLUSTERS is not None:
         return
 
-    raw = os.environ.get("XATU_CLICKHOUSE_CONFIGS", "")
+    raw = os.environ.get("ETHPANDAOPS_CLICKHOUSE_CONFIGS", "")
     if not raw:
         raise ValueError(
-            "ClickHouse not configured. Set XATU_CLICKHOUSE_CONFIGS environment variable."
+            "ClickHouse not configured. Set ETHPANDAOPS_CLICKHOUSE_CONFIGS environment variable."
         )
 
     try:
         configs = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid XATU_CLICKHOUSE_CONFIGS JSON: {e}") from e
+        raise ValueError(f"Invalid ETHPANDAOPS_CLICKHOUSE_CONFIGS JSON: {e}") from e
 
     _CLUSTERS = {}
     for cfg in configs:

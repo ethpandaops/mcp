@@ -1,4 +1,4 @@
-package resource
+package clickhouse
 
 import (
 	"context"
@@ -14,8 +14,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/sirupsen/logrus"
-
-	"github.com/ethpandaops/xatu-mcp/pkg/config"
 )
 
 // validIdentifier matches valid ClickHouse table/column identifiers.
@@ -31,12 +29,6 @@ const (
 	// schemaQueryConcurrency limits concurrent schema queries per cluster.
 	schemaQueryConcurrency = 5
 )
-
-// SchemaDiscoveryDatasource maps a ClickHouse cluster name to a logical cluster name.
-type SchemaDiscoveryDatasource struct {
-	Name    string
-	Cluster string
-}
 
 // ClickHouseSchemaConfig holds configuration for schema discovery.
 type ClickHouseSchemaConfig struct {
@@ -94,7 +86,7 @@ var _ ClickHouseSchemaClient = (*clickhouseSchemaClient)(nil)
 type clickhouseSchemaClient struct {
 	log       logrus.FieldLogger
 	cfg       ClickHouseSchemaConfig
-	chConfigs []config.ClickHouseConfig
+	chConfigs []ClusterConfig
 
 	mu          sync.RWMutex
 	clusters    map[string]*ClusterTables
@@ -109,7 +101,7 @@ type clickhouseSchemaClient struct {
 func NewClickHouseSchemaClient(
 	log logrus.FieldLogger,
 	cfg ClickHouseSchemaConfig,
-	chConfigs []config.ClickHouseConfig,
+	chConfigs []ClusterConfig,
 ) ClickHouseSchemaClient {
 	if cfg.RefreshInterval == 0 {
 		cfg.RefreshInterval = DefaultSchemaRefreshInterval
@@ -179,7 +171,7 @@ func (c *clickhouseSchemaClient) Start(ctx context.Context) error {
 // initConnections initializes ClickHouse connections for configured datasources.
 func (c *clickhouseSchemaClient) initConnections() error {
 	// Build a map of ClickHouse configs by name.
-	chConfigMap := make(map[string]config.ClickHouseConfig, len(c.chConfigs))
+	chConfigMap := make(map[string]ClusterConfig, len(c.chConfigs))
 	for _, cfg := range c.chConfigs {
 		chConfigMap[cfg.Name] = cfg
 	}
@@ -219,7 +211,7 @@ func (c *clickhouseSchemaClient) initConnections() error {
 }
 
 // createConnection creates a ClickHouse connection from config.
-func (c *clickhouseSchemaClient) createConnection(cfg config.ClickHouseConfig) (driver.Conn, error) {
+func (c *clickhouseSchemaClient) createConnection(cfg ClusterConfig) (driver.Conn, error) {
 	// Parse host:port using net.SplitHostPort for IPv6 compatibility.
 	host, port, err := net.SplitHostPort(cfg.Host)
 	if err != nil {
