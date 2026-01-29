@@ -135,7 +135,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	}
 
 	// Create embedding model and example index for semantic search.
-	exampleIndex, err := b.buildExampleIndex(pluginReg)
+	exampleIndex, embedder, err := b.buildExampleIndex(pluginReg)
 	if err != nil {
 		_ = authSvc.Stop()
 		_ = cartographoorClient.Stop()
@@ -151,10 +151,12 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	}
 
 	// Create runbook registry and index for semantic search.
-	runbookReg, runbookIndex, err := b.buildRunbookIndex()
+	runbookReg, runbookIndex, err := b.buildRunbookIndex(embedder)
 	if err != nil {
 		if exampleIndex != nil {
 			_ = exampleIndex.Close()
+		} else if embedder != nil {
+			_ = embedder.Close()
 		}
 
 		_ = authSvc.Stop()
@@ -339,45 +341,40 @@ func (b *Builder) injectCartographoorClient(
 	}
 }
 
-// buildExampleIndex creates the semantic search index for examples.
+// buildExampleIndex creates the semantic search index for examples
+// and returns the shared embedder.
 // Returns nil if semantic search is disabled or model is not available.
-func (b *Builder) buildExampleIndex(pluginReg *plugin.Registry) (*resource.ExampleIndex, error) {
+func (b *Builder) buildExampleIndex(pluginReg *plugin.Registry) (*resource.ExampleIndex, *embedding.Embedder, error) {
 	cfg := b.cfg.SemanticSearch
 	if cfg.ModelPath == "" {
-		return nil, fmt.Errorf("semantic_search.model_path is required")
+		return nil, nil, fmt.Errorf("semantic_search.model_path is required")
 	}
 
 	// Check if model file exists.
 	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("embedding model not found at %s (run 'make download-models' to fetch it)", cfg.ModelPath)
+		return nil, nil, fmt.Errorf("embedding model not found at %s (run 'make download-models' to fetch it)", cfg.ModelPath)
 	}
 
 	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
 	if err != nil {
-		return nil, fmt.Errorf("creating embedder: %w", err)
+		return nil, nil, fmt.Errorf("creating embedder: %w", err)
 	}
 
 	index, err := resource.NewExampleIndex(b.log, embedder, resource.GetQueryExamples(pluginReg))
 	if err != nil {
 		_ = embedder.Close()
 
-		return nil, fmt.Errorf("building example index: %w", err)
+		return nil, nil, fmt.Errorf("building example index: %w", err)
 	}
 
-	return index, nil
+	return index, embedder, nil
 }
 
 // buildRunbookIndex creates the runbook registry and semantic search index.
 // Returns nil for both if runbook loading fails or no runbooks are available.
-func (b *Builder) buildRunbookIndex() (*runbooks.Registry, *resource.RunbookIndex, error) {
-	cfg := b.cfg.SemanticSearch
-	if cfg.ModelPath == "" {
-		return nil, nil, fmt.Errorf("semantic_search.model_path is required for runbook search")
-	}
-
-	// Check if model file exists.
-	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
-		return nil, nil, fmt.Errorf("embedding model not found at %s", cfg.ModelPath)
+func (b *Builder) buildRunbookIndex(embedder *embedding.Embedder) (*runbooks.Registry, *resource.RunbookIndex, error) {
+	if embedder == nil {
+		return nil, nil, fmt.Errorf("embedder is required for runbook search")
 	}
 
 	// Create runbook registry (loads all embedded runbooks).
@@ -392,17 +389,9 @@ func (b *Builder) buildRunbookIndex() (*runbooks.Registry, *resource.RunbookInde
 		return nil, nil, nil
 	}
 
-	// Create embedder for runbook index.
-	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating embedder for runbooks: %w", err)
-	}
-
 	// Build the runbook search index.
 	index, err := resource.NewRunbookIndex(b.log, embedder, runbookReg.All())
 	if err != nil {
-		_ = embedder.Close()
-
 		return nil, nil, fmt.Errorf("building runbook index: %w", err)
 	}
 
