@@ -56,6 +56,7 @@ COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY plugins/ plugins/
 COPY internal/ internal/
+COPY runbooks/ runbooks/
 
 # Build with version info (CGO_ENABLED=0 works because kelindar/search uses purego)
 ARG VERSION=dev
