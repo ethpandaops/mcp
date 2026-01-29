@@ -16,6 +16,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 	"github.com/ethpandaops/mcp/pkg/tool"
+	"github.com/ethpandaops/mcp/runbooks"
 
 	clickhouseplugin "github.com/ethpandaops/mcp/plugins/clickhouse"
 	doraplugin "github.com/ethpandaops/mcp/plugins/dora"
@@ -149,8 +150,28 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		b.log.Info("Semantic search example index built")
 	}
 
+	// Create runbook registry and index for semantic search.
+	runbookReg, runbookIndex, err := b.buildRunbookIndex()
+	if err != nil {
+		if exampleIndex != nil {
+			_ = exampleIndex.Close()
+		}
+
+		_ = authSvc.Stop()
+		_ = cartographoorClient.Stop()
+		_ = proxySvc.Stop(ctx)
+		pluginReg.StopAll(ctx)
+		_ = sandboxSvc.Stop(ctx)
+
+		return nil, fmt.Errorf("building runbook index: %w", err)
+	}
+
+	if runbookIndex != nil {
+		b.log.Info("Semantic search runbook index built")
+	}
+
 	// Create tool registry and register tools.
-	toolReg := b.buildToolRegistry(sandboxSvc, exampleIndex, pluginReg, proxySvc)
+	toolReg := b.buildToolRegistry(sandboxSvc, exampleIndex, pluginReg, proxySvc, runbookReg, runbookIndex)
 
 	// Create resource registry and register resources.
 	resourceReg := b.buildResourceRegistry(cartographoorClient, pluginReg, toolReg)
@@ -270,6 +291,8 @@ func (b *Builder) buildToolRegistry(
 	exampleIndex *resource.ExampleIndex,
 	pluginReg *plugin.Registry,
 	proxySvc proxy.Service,
+	runbookReg *runbooks.Registry,
+	runbookIndex *resource.RunbookIndex,
 ) tool.Registry {
 	reg := tool.NewRegistry(b.log)
 
@@ -282,6 +305,11 @@ func (b *Builder) buildToolRegistry(
 	// Register search_examples tool (requires example index).
 	if exampleIndex != nil {
 		reg.Register(tool.NewSearchExamplesTool(b.log, exampleIndex, pluginReg))
+	}
+
+	// Register search_runbooks tool (requires runbook index).
+	if runbookIndex != nil && runbookReg != nil {
+		reg.Register(tool.NewSearchRunbooksTool(b.log, runbookIndex, runbookReg))
 	}
 
 	b.log.WithField("tool_count", len(reg.List())).Info("Tool registry built")
@@ -337,6 +365,48 @@ func (b *Builder) buildExampleIndex(pluginReg *plugin.Registry) (*resource.Examp
 	}
 
 	return index, nil
+}
+
+// buildRunbookIndex creates the runbook registry and semantic search index.
+// Returns nil for both if runbook loading fails or no runbooks are available.
+func (b *Builder) buildRunbookIndex() (*runbooks.Registry, *resource.RunbookIndex, error) {
+	cfg := b.cfg.SemanticSearch
+	if cfg.ModelPath == "" {
+		return nil, nil, fmt.Errorf("semantic_search.model_path is required for runbook search")
+	}
+
+	// Check if model file exists.
+	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
+		return nil, nil, fmt.Errorf("embedding model not found at %s", cfg.ModelPath)
+	}
+
+	// Create runbook registry (loads all embedded runbooks).
+	runbookReg, err := runbooks.NewRegistry(b.log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating runbook registry: %w", err)
+	}
+
+	if runbookReg.Count() == 0 {
+		b.log.Warn("No runbooks found, search_runbooks tool will be disabled")
+
+		return nil, nil, nil
+	}
+
+	// Create embedder for runbook index.
+	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating embedder for runbooks: %w", err)
+	}
+
+	// Build the runbook search index.
+	index, err := resource.NewRunbookIndex(b.log, embedder, runbookReg.All())
+	if err != nil {
+		_ = embedder.Close()
+
+		return nil, nil, fmt.Errorf("building runbook index: %w", err)
+	}
+
+	return runbookReg, index, nil
 }
 
 // buildResourceRegistry creates and populates the resource registry.
