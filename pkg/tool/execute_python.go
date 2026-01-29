@@ -2,7 +2,6 @@ package tool
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -196,6 +195,17 @@ func newExecutePythonHandler(
 		// Ensure token is revoked after execution completes (or fails).
 		defer proxySvc.RevokeToken(executionTrackingID)
 
+		// Check session limit before creating a new session.
+		if sessionID == "" && sandboxSvc.SessionsEnabled() {
+			canCreate, count, maxAllowed := sandboxSvc.CanCreateSession(ctx, ownerID)
+			if !canCreate {
+				return CallToolError(fmt.Errorf(
+					"maximum sessions limit reached (%d/%d). Use manage_session with operation 'list' to see sessions, then 'destroy' to free up a slot",
+					count, maxAllowed,
+				)), nil
+			}
+		}
+
 		// Execute the code in the sandbox.
 		result, err := sandboxSvc.Execute(ctx, sandbox.ExecuteRequest{
 			Code:      code,
@@ -299,7 +309,7 @@ func formatSize(bytes int64) string {
 }
 
 // buildSandboxEnv creates credential-free environment variables for the sandbox.
-// The proxy URL and datasource names are included, but no credentials.
+// The proxy URL and datasource info are included, but no credentials.
 // The token is added separately by the caller.
 func buildSandboxEnv(
 	cfg *config.Config,
@@ -307,6 +317,7 @@ func buildSandboxEnv(
 	proxySvc proxy.Service,
 ) (map[string]string, error) {
 	// Get credential-free env vars from all plugins.
+	// This includes datasource info (name, description, database/url) for each datasource type.
 	env, err := pluginReg.SandboxEnv()
 	if err != nil {
 		return nil, fmt.Errorf("collecting sandbox env: %w", err)
@@ -314,22 +325,6 @@ func buildSandboxEnv(
 
 	// Add proxy URL.
 	env["ETHPANDAOPS_PROXY_URL"] = proxySvc.URL()
-
-	// Add datasource lists from proxy service.
-	if ds := proxySvc.ClickHouseDatasources(); len(ds) > 0 {
-		dsJSON, _ := json.Marshal(ds)
-		env["ETHPANDAOPS_CLICKHOUSE_DATASOURCES"] = string(dsJSON)
-	}
-
-	if ds := proxySvc.PrometheusDatasources(); len(ds) > 0 {
-		dsJSON, _ := json.Marshal(ds)
-		env["ETHPANDAOPS_PROMETHEUS_DATASOURCES"] = string(dsJSON)
-	}
-
-	if ds := proxySvc.LokiDatasources(); len(ds) > 0 {
-		dsJSON, _ := json.Marshal(ds)
-		env["ETHPANDAOPS_LOKI_DATASOURCES"] = string(dsJSON)
-	}
 
 	// Add S3 bucket name (no credentials).
 	if bucket := proxySvc.S3Bucket(); bucket != "" {

@@ -62,19 +62,27 @@ func (p *Plugin) SandboxEnv() (map[string]string, error) {
 		return nil, nil
 	}
 
-	// Only return the list of datasource names, not credentials.
-	names := make([]string, 0, len(p.cfg.Instances))
-	for _, inst := range p.cfg.Instances {
-		names = append(names, inst.Name)
+	// Return datasource info without credentials.
+	type datasourceInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
 	}
 
-	namesJSON, err := json.Marshal(names)
+	infos := make([]datasourceInfo, 0, len(p.cfg.Instances))
+	for _, inst := range p.cfg.Instances {
+		infos = append(infos, datasourceInfo{
+			Name:        inst.Name,
+			Description: inst.Description,
+		})
+	}
+
+	infosJSON, err := json.Marshal(infos)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling Prometheus datasource names: %w", err)
+		return nil, fmt.Errorf("marshaling Prometheus datasource info: %w", err)
 	}
 
 	return map[string]string{
-		"ETHPANDAOPS_PROMETHEUS_DATASOURCES": string(namesJSON),
+		"ETHPANDAOPS_PROMETHEUS_DATASOURCES": string(infosJSON),
 	}, nil
 }
 

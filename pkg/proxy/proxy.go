@@ -212,8 +212,13 @@ func (s *service) Start(ctx context.Context) error {
 		return fmt.Errorf("proxy already started")
 	}
 
+	// Create listener first to detect port conflicts immediately.
+	listener, err := net.Listen("tcp", s.listenAddr)
+	if err != nil {
+		return fmt.Errorf("binding to %s: %w", s.listenAddr, err)
+	}
+
 	s.server = &http.Server{
-		Addr:              s.listenAddr,
 		Handler:           s.mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -222,11 +227,11 @@ func (s *service) Start(ctx context.Context) error {
 		BaseContext:       func(_ net.Listener) context.Context { return ctx },
 	}
 
-	// Start server in background.
-	go func() {
-		s.log.WithField("addr", s.listenAddr).Info("Starting proxy server")
+	s.log.WithField("addr", s.listenAddr).Info("Starting proxy server")
 
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	// Start server in background with the already-bound listener.
+	go func() {
+		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			s.log.WithError(err).Error("Proxy server error")
 		}
 	}()
@@ -269,7 +274,7 @@ func (s *service) URL() string {
 	}
 
 	// Extract port from listen address.
-	port := "8081"
+	port := "18081"
 	if _, p, err := net.SplitHostPort(s.listenAddr); err == nil && p != "" {
 		port = p
 	}

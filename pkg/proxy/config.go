@@ -6,7 +6,7 @@ import "time"
 
 // Config holds the proxy service configuration.
 type Config struct {
-	// ListenAddr is the address to listen on (default: ":8081").
+	// ListenAddr is the address to listen on (default: ":18081").
 	ListenAddr string `yaml:"listen_addr,omitempty"`
 
 	// TokenTTL is the duration a token is valid for (default: 1h).
@@ -20,7 +20,7 @@ type Config struct {
 // ApplyDefaults sets default values for configuration fields.
 func (c *Config) ApplyDefaults() {
 	if c.ListenAddr == "" {
-		c.ListenAddr = ":8081"
+		c.ListenAddr = ":18081"
 	}
 
 	if c.TokenTTL == 0 {

@@ -114,7 +114,7 @@ type ObservabilityConfig struct {
 // ProxyConfig holds credential proxy configuration.
 // The proxy is always enabled - sandbox containers never receive credentials directly.
 type ProxyConfig struct {
-	// ListenAddr is the address for the proxy to listen on (default: ":8081").
+	// ListenAddr is the address for the proxy to listen on (default: ":18081").
 	ListenAddr string `yaml:"listen_addr,omitempty"`
 
 	// TokenTTL is the duration a per-execution token is valid for (default: 1h).
@@ -261,7 +261,7 @@ func applyDefaults(cfg *Config) {
 
 	// Proxy defaults.
 	if cfg.Proxy.ListenAddr == "" {
-		cfg.Proxy.ListenAddr = ":8081"
+		cfg.Proxy.ListenAddr = ":18081"
 	}
 
 	if cfg.Proxy.TokenTTL == 0 {

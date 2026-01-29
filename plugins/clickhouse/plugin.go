@@ -92,19 +92,29 @@ func (p *Plugin) SandboxEnv() (map[string]string, error) {
 		return nil, nil
 	}
 
-	// Only return the list of datasource names, not credentials.
-	names := make([]string, 0, len(p.cfg.Clusters))
-	for _, cluster := range p.cfg.Clusters {
-		names = append(names, cluster.Name)
+	// Return datasource info without credentials.
+	type datasourceInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Database    string `json:"database"`
 	}
 
-	namesJSON, err := json.Marshal(names)
+	infos := make([]datasourceInfo, 0, len(p.cfg.Clusters))
+	for _, cluster := range p.cfg.Clusters {
+		infos = append(infos, datasourceInfo{
+			Name:        cluster.Name,
+			Description: cluster.Description,
+			Database:    cluster.Database,
+		})
+	}
+
+	infosJSON, err := json.Marshal(infos)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling ClickHouse datasource names: %w", err)
+		return nil, fmt.Errorf("marshaling ClickHouse datasource info: %w", err)
 	}
 
 	return map[string]string{
-		"ETHPANDAOPS_CLICKHOUSE_DATASOURCES": string(namesJSON),
+		"ETHPANDAOPS_CLICKHOUSE_DATASOURCES": string(infosJSON),
 	}, nil
 }
 

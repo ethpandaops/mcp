@@ -260,6 +260,9 @@ func (b *Builder) buildToolRegistry(
 	// Register execute_python tool.
 	reg.Register(tool.NewExecutePythonTool(b.log, sandboxSvc, b.cfg, pluginReg, proxySvc))
 
+	// Register manage_session tool.
+	reg.Register(tool.NewManageSessionTool(b.log, sandboxSvc))
+
 	// Register search_examples tool (requires example index).
 	if exampleIndex != nil {
 		reg.Register(tool.NewSearchExamplesTool(b.log, exampleIndex, pluginReg))

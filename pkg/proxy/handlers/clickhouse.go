@@ -83,7 +83,10 @@ func (h *ClickHouseHandler) createCluster(cfg ClickHouseConfig) *clickhouseClust
 	rp.Director = func(req *http.Request) {
 		originalDirector(req)
 
-		// Add basic auth.
+		// Remove the sandbox's Authorization header (Bearer token) before adding our own.
+		req.Header.Del("Authorization")
+
+		// Add basic auth for ClickHouse.
 		if cfg.Username != "" {
 			req.SetBasicAuth(cfg.Username, cfg.Password)
 		}
@@ -96,8 +99,13 @@ func (h *ClickHouseHandler) createCluster(cfg ClickHouseConfig) *clickhouseClust
 
 		req.URL.RawQuery = q.Encode()
 
-		// Remove the Authorization header from sandbox (we handle auth).
-		req.Header.Del("Authorization")
+		// Set req.Host to the target host. The default director only sets req.URL.Host,
+		// but Go's http.Client uses req.Host for the Host header when sending requests.
+		// Without this, Cloudflare rejects requests with mismatched Host headers.
+		req.Host = req.URL.Host
+
+		// Also delete any existing Host header to avoid conflicts.
+		req.Header.Del("Host")
 	}
 
 	// Error handler.

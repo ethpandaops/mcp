@@ -36,8 +36,8 @@ from ethpandaops._time import parse_duration
 _PROXY_URL = os.environ.get("ETHPANDAOPS_PROXY_URL", "")
 _PROXY_TOKEN = os.environ.get("ETHPANDAOPS_PROXY_TOKEN", "")
 
-# Cache for datasource names.
-_DATASOURCE_NAMES: list[str] | None = None
+# Cache for datasource info.
+_DATASOURCE_INFO: list[dict[str, str]] | None = None
 
 
 def _check_proxy_config() -> None:
@@ -48,24 +48,29 @@ def _check_proxy_config() -> None:
         )
 
 
-def _load_datasources() -> list[str]:
-    """Load datasource names from environment variable."""
-    global _DATASOURCE_NAMES
+def _load_datasources() -> list[dict[str, str]]:
+    """Load datasource info from environment variable."""
+    global _DATASOURCE_INFO
 
-    if _DATASOURCE_NAMES is not None:
-        return _DATASOURCE_NAMES
+    if _DATASOURCE_INFO is not None:
+        return _DATASOURCE_INFO
 
     raw = os.environ.get("ETHPANDAOPS_LOKI_DATASOURCES", "")
     if not raw:
-        _DATASOURCE_NAMES = []
-        return _DATASOURCE_NAMES
+        _DATASOURCE_INFO = []
+        return _DATASOURCE_INFO
 
     try:
-        _DATASOURCE_NAMES = json.loads(raw)
+        _DATASOURCE_INFO = json.loads(raw)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid ETHPANDAOPS_LOKI_DATASOURCES JSON: {e}") from e
 
-    return _DATASOURCE_NAMES
+    return _DATASOURCE_INFO
+
+
+def _get_datasource_names() -> list[str]:
+    """Get list of datasource names for validation."""
+    return [ds["name"] for ds in _load_datasources()]
 
 
 def _get_client() -> httpx.Client:
@@ -90,8 +95,7 @@ def list_datasources() -> list[dict[str, Any]]:
         >>> for inst in instances:
         ...     print(f"{inst['name']}: {inst['description']}")
     """
-    datasources = _load_datasources()
-    return [{"name": name, "description": "", "url": ""} for name in datasources]
+    return _load_datasources()
 
 
 def _parse_time(time_str: str) -> str:
@@ -160,7 +164,7 @@ def _query_api(
     instance_name: str, path: str, params: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Execute a query against the Loki API via proxy."""
-    datasources = _load_datasources()
+    datasources = _get_datasource_names()
     if instance_name not in datasources:
         raise ValueError(
             f"Unknown instance '{instance_name}'. Available instances: {datasources}"
@@ -184,7 +188,7 @@ def _query_labels_api(
     instance_name: str, path: str, params: dict[str, str]
 ) -> list[str]:
     """Execute a labels query against the Loki API via proxy."""
-    datasources = _load_datasources()
+    datasources = _get_datasource_names()
     if instance_name not in datasources:
         raise ValueError(
             f"Unknown instance '{instance_name}'. Available instances: {datasources}"
