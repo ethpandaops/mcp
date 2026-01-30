@@ -246,7 +246,59 @@ func (b *Builder) buildAuth() (auth.SimpleService, error) {
 }
 
 // buildProxy creates the credential proxy service.
+// Returns either a local proxy (runs in-process) or a remote proxy adapter
+// (connects to a K8s-hosted proxy).
 func (b *Builder) buildProxy(pluginReg *plugin.Registry) proxy.Service {
+	// Check if remote proxy is configured.
+	if b.cfg.Proxy.IsRemote() {
+		remoteSvc := proxy.NewRemote(b.log, proxy.RemoteConfig{
+			URL:       b.cfg.Proxy.Remote.URL,
+			IssuerURL: b.cfg.Proxy.Remote.IssuerURL,
+			ClientID:  b.cfg.Proxy.Remote.ClientID,
+		})
+
+		// Set datasource names from plugin configs.
+		// The remote proxy needs to know datasource names for environment variables.
+		var chNames, promNames, lokiNames []string
+
+		for _, p := range pluginReg.Initialized() {
+			cfg := p.ProxyConfig()
+			if cfg == nil {
+				continue
+			}
+
+			switch c := cfg.(type) {
+			case []handlers.ClickHouseConfig:
+				for _, ch := range c {
+					chNames = append(chNames, ch.Name)
+				}
+			case []handlers.PrometheusConfig:
+				for _, prom := range c {
+					promNames = append(promNames, prom.Name)
+				}
+			case []handlers.LokiConfig:
+				for _, loki := range c {
+					lokiNames = append(lokiNames, loki.Name)
+				}
+			}
+		}
+
+		s3Bucket := ""
+		if b.cfg.Storage != nil {
+			s3Bucket = b.cfg.Storage.Bucket
+		}
+
+		// Type assertion to set datasources (RemoteService has this method).
+		if setter, ok := remoteSvc.(interface {
+			SetDatasources(ch, prom, loki []string, s3Bucket string)
+		}); ok {
+			setter.SetDatasources(chNames, promNames, lokiNames, s3Bucket)
+		}
+
+		return remoteSvc
+	}
+
+	// Build local proxy.
 	opts := proxy.Options{
 		Config: proxy.Config{
 			ListenAddr:  b.cfg.Proxy.ListenAddr,

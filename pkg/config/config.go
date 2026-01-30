@@ -115,14 +115,37 @@ type ObservabilityConfig struct {
 // The proxy is always enabled - sandbox containers never receive credentials directly.
 type ProxyConfig struct {
 	// ListenAddr is the address for the proxy to listen on (default: ":18081").
+	// Ignored when Remote.URL is set.
 	ListenAddr string `yaml:"listen_addr,omitempty"`
 
 	// TokenTTL is the duration a per-execution token is valid for (default: 1h).
+	// Ignored when Remote.URL is set.
 	TokenTTL time.Duration `yaml:"token_ttl,omitempty"`
 
 	// SandboxHost is the hostname/IP that sandbox containers should use to reach the proxy.
-	// Defaults to "host.docker.internal".
+	// Defaults to "host.docker.internal". Ignored when Remote.URL is set.
 	SandboxHost string `yaml:"sandbox_host,omitempty"`
+
+	// Remote configures a remote proxy for use with Kubernetes deployments.
+	// When set, the local proxy is not started and the user's JWT is used for auth.
+	Remote *RemoteProxyConfig `yaml:"remote,omitempty"`
+}
+
+// RemoteProxyConfig configures a remote proxy endpoint.
+type RemoteProxyConfig struct {
+	// URL is the base URL of the remote proxy (e.g., https://proxy.ethpandaops.io).
+	URL string `yaml:"url"`
+
+	// IssuerURL is the OIDC issuer URL for authentication (e.g., https://dex.ethpandaops.io).
+	IssuerURL string `yaml:"issuer_url"`
+
+	// ClientID is the OAuth client ID for authentication.
+	ClientID string `yaml:"client_id"`
+}
+
+// IsRemote returns true if a remote proxy is configured.
+func (c *ProxyConfig) IsRemote() bool {
+	return c.Remote != nil && c.Remote.URL != ""
 }
 
 // envVarPattern matches ${VAR_NAME} patterns for environment variable substitution.

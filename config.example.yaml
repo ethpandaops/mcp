@@ -169,6 +169,15 @@ auth:
 #   listen_addr: ":18081"  # Address for proxy to listen on
 #   token_ttl: 1h          # How long per-execution tokens are valid
 #   sandbox_host: "host.docker.internal"  # Hostname/IP for sandbox containers to reach proxy
+#
+#   # Remote proxy configuration (for K8s deployments)
+#   # When set, the local proxy is not started. Instead, the MCP server connects
+#   # to a remote proxy and uses the user's JWT for authentication.
+#   # Users must run 'mcp auth login' first to obtain a JWT.
+#   # remote:
+#   #   url: "https://proxy.ethpandaops.io"       # Remote proxy URL
+#   #   issuer_url: "https://dex.ethpandaops.io" # OIDC issuer for authentication
+#   #   client_id: "ethpandaops-mcp"             # OAuth client ID
 
 # Observability configuration
 observability:
