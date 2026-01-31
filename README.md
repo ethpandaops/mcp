@@ -36,6 +36,16 @@ Add to `~/.claude.json` under `mcpServers`:
 }
 ```
 
+### Skills
+
+Install skills to give Claude knowledge about querying Ethereum data:
+
+```bash
+npx skills add ethpandaops/mcp
+```
+
+This installs the `query` skill which provides background knowledge for using the MCP tools effectively (ClickHouse queries, Prometheus metrics, Loki logs, session management, etc.).
+
 ## Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
