@@ -4,11 +4,17 @@ package plugin
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/mcp/pkg/types"
 )
+
+// ErrNoValidConfig indicates that a plugin was configured but has no valid
+// entries (e.g., all clusters/instances have empty required fields).
+// This is not an error - the plugin should be skipped gracefully.
+var ErrNoValidConfig = errors.New("no valid configuration entries")
 
 // CartographoorAware is an optional interface that plugins can implement
 // to receive the cartographoor client for network discovery.
@@ -16,6 +22,14 @@ import (
 // plugins should type-assert to resource.CartographoorClient.
 type CartographoorAware interface {
 	SetCartographoorClient(client any)
+}
+
+// ProxyAware is an optional interface that plugins can implement
+// to receive the proxy service for proxy-backed operations.
+// The client parameter is passed as any to avoid circular imports;
+// plugins should type-assert to proxy.Service.
+type ProxyAware interface {
+	SetProxyClient(client any)
 }
 
 // DefaultEnabled is an optional interface that plugins can implement
@@ -54,11 +68,6 @@ type Plugin interface {
 	// Credentials are never passed to sandbox containers - they connect via
 	// the credential proxy instead.
 	SandboxEnv() (map[string]string, error)
-
-	// ProxyConfig returns configuration for the credential proxy.
-	// The returned value should be a slice of config structs appropriate
-	// for the plugin type (e.g., []handlers.ClickHouseConfig).
-	ProxyConfig() any
 
 	// DatasourceInfo returns metadata about configured datasources
 	// for the datasources:// MCP resource.

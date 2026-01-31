@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
 	"github.com/ethpandaops/mcp/pkg/plugin"
-	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
+	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
@@ -23,6 +21,7 @@ type Plugin struct {
 	cfg          Config
 	log          logrus.FieldLogger
 	schemaClient ClickHouseSchemaClient
+	proxySvc     proxy.Service
 }
 
 func New() *Plugin {
@@ -31,8 +30,37 @@ func New() *Plugin {
 
 func (p *Plugin) Name() string { return "clickhouse" }
 
+// SetProxyClient injects the proxy service for schema discovery.
+func (p *Plugin) SetProxyClient(client any) {
+	if svc, ok := client.(proxy.Service); ok {
+		p.proxySvc = svc
+	}
+}
+
 func (p *Plugin) Init(rawConfig []byte) error {
-	return yaml.Unmarshal(rawConfig, &p.cfg)
+	if err := yaml.Unmarshal(rawConfig, &p.cfg); err != nil {
+		return err
+	}
+
+	// Drop unnamed clusters; remaining fields are optional when proxy is authoritative.
+	validClusters := make([]ClusterConfig, 0, len(p.cfg.Clusters))
+	for _, c := range p.cfg.Clusters {
+		if c.Name != "" {
+			validClusters = append(validClusters, c)
+		}
+	}
+	p.cfg.Clusters = validClusters
+
+	// Drop schema discovery entries without a datasource name.
+	validDatasources := make([]SchemaDiscoveryDatasource, 0, len(p.cfg.SchemaDiscovery.Datasources))
+	for _, ds := range p.cfg.SchemaDiscovery.Datasources {
+		if ds.Name != "" {
+			validDatasources = append(validDatasources, ds)
+		}
+	}
+	p.cfg.SchemaDiscovery.Datasources = validDatasources
+
+	return nil
 }
 
 func (p *Plugin) ApplyDefaults() {
@@ -56,29 +84,11 @@ func (p *Plugin) Validate() error {
 			return fmt.Errorf("clusters[%d].name %q is duplicated", i, ch.Name)
 		}
 		names[ch.Name] = struct{}{}
-		if ch.Host == "" {
-			return fmt.Errorf("clusters[%d].host is required", i)
-		}
-		if ch.Database == "" {
-			return fmt.Errorf("clusters[%d].database is required", i)
-		}
-		if ch.Username == "" {
-			return fmt.Errorf("clusters[%d].username is required", i)
-		}
-		if ch.Password == "" {
-			return fmt.Errorf("clusters[%d].password is required", i)
-		}
 	}
-	// Validate schema discovery datasources reference valid clusters
+	// Validate schema discovery entries.
 	for i, ds := range p.cfg.SchemaDiscovery.Datasources {
 		if ds.Name == "" {
 			return fmt.Errorf("schema_discovery.datasources[%d].name is required", i)
-		}
-		if ds.Cluster == "" {
-			return fmt.Errorf("schema_discovery.datasources[%d].cluster is required", i)
-		}
-		if _, exists := names[ds.Name]; !exists {
-			return fmt.Errorf("schema_discovery.datasources[%d].name %q does not reference a configured cluster", i, ds.Name)
 		}
 	}
 	return nil
@@ -116,68 +126,6 @@ func (p *Plugin) SandboxEnv() (map[string]string, error) {
 	return map[string]string{
 		"ETHPANDAOPS_CLICKHOUSE_DATASOURCES": string(infosJSON),
 	}, nil
-}
-
-// ProxyConfig returns the configuration needed by the credential proxy.
-func (p *Plugin) ProxyConfig() any {
-	if len(p.cfg.Clusters) == 0 {
-		return nil
-	}
-
-	configs := make([]handlers.ClickHouseConfig, 0, len(p.cfg.Clusters))
-
-	for _, cluster := range p.cfg.Clusters {
-		host, port := parseHostPort(cluster.Host, 443)
-
-		configs = append(configs, handlers.ClickHouseConfig{
-			Name:       cluster.Name,
-			Host:       host,
-			Port:       port,
-			Database:   cluster.Database,
-			Username:   cluster.Username,
-			Password:   cluster.Password,
-			Secure:     cluster.IsSecure(),
-			SkipVerify: cluster.SkipVerify,
-			Timeout:    cluster.Timeout,
-		})
-	}
-
-	return configs
-}
-
-// parseHostPort extracts host and port from a host:port string.
-// Handles IPv6 addresses in bracket notation [::1]:port.
-func parseHostPort(hostPort string, defaultPort int) (string, int) {
-	// Handle IPv6 with brackets: [::1]:port
-	if len(hostPort) > 0 && hostPort[0] == '[' {
-		bracketIdx := -1
-		for i, c := range hostPort {
-			if c == ']' {
-				bracketIdx = i
-				break
-			}
-		}
-		if bracketIdx > 0 {
-			host := hostPort[1:bracketIdx]
-			if bracketIdx+1 < len(hostPort) && hostPort[bracketIdx+1] == ':' {
-				portStr := hostPort[bracketIdx+2:]
-				if port, err := strconv.Atoi(portStr); err == nil {
-					return host, port
-				}
-			}
-			return host, defaultPort
-		}
-	}
-
-	// Handle host:port (IPv4 or hostname)
-	re := regexp.MustCompile(`^([^:]+):(\d+)$`)
-	if matches := re.FindStringSubmatch(hostPort); len(matches) == 3 {
-		if port, err := strconv.Atoi(matches[2]); err == nil {
-			return matches[1], port
-		}
-	}
-
-	return hostPort, defaultPort
 }
 
 func (p *Plugin) DatasourceInfo() []types.DatasourceInfo {
@@ -266,16 +214,46 @@ func (p *Plugin) RegisterResources(log logrus.FieldLogger, reg plugin.ResourceRe
 }
 
 func (p *Plugin) Start(ctx context.Context) error {
-	if !p.cfg.SchemaDiscovery.IsEnabled() {
-		if p.log != nil {
-			p.log.Debug("Schema discovery disabled, skipping")
-		}
-		return nil
-	}
-
 	// Create the schema client
 	if p.log == nil {
 		p.log = logrus.WithField("plugin", "clickhouse")
+	}
+
+	if p.cfg.SchemaDiscovery.Enabled != nil && !*p.cfg.SchemaDiscovery.Enabled {
+		p.log.Debug("Schema discovery disabled, skipping")
+		return nil
+	}
+
+	if p.proxySvc == nil {
+		return fmt.Errorf("proxy service is required for ClickHouse schema discovery")
+	}
+
+	datasources := make([]SchemaDiscoveryDatasource, 0, len(p.cfg.SchemaDiscovery.Datasources))
+	for _, ds := range p.cfg.SchemaDiscovery.Datasources {
+		if ds.Name == "" {
+			continue
+		}
+		if ds.Cluster == "" {
+			ds.Cluster = ds.Name
+		}
+		datasources = append(datasources, ds)
+	}
+
+	if len(datasources) == 0 {
+		for _, name := range p.proxySvc.ClickHouseDatasources() {
+			if name == "" {
+				continue
+			}
+			datasources = append(datasources, SchemaDiscoveryDatasource{
+				Name:    name,
+				Cluster: name,
+			})
+		}
+	}
+
+	if len(datasources) == 0 {
+		p.log.Debug("No ClickHouse datasources available for schema discovery, skipping")
+		return nil
 	}
 
 	p.schemaClient = NewClickHouseSchemaClient(
@@ -283,9 +261,9 @@ func (p *Plugin) Start(ctx context.Context) error {
 		ClickHouseSchemaConfig{
 			RefreshInterval: p.cfg.SchemaDiscovery.RefreshInterval,
 			QueryTimeout:    DefaultSchemaQueryTimeout,
-			Datasources:     p.cfg.SchemaDiscovery.Datasources,
+			Datasources:     datasources,
 		},
-		p.cfg.Clusters,
+		p.proxySvc,
 	)
 
 	return p.schemaClient.Start(ctx)

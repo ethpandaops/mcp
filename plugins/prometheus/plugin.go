@@ -9,7 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ethpandaops/mcp/pkg/plugin"
-	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
@@ -26,7 +25,27 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return "prometheus" }
 
 func (p *Plugin) Init(rawConfig []byte) error {
-	return yaml.Unmarshal(rawConfig, &p.cfg)
+	if err := yaml.Unmarshal(rawConfig, &p.cfg); err != nil {
+		return err
+	}
+
+	// Filter out instances with empty required fields (e.g., missing env vars).
+	validInstances := make([]InstanceConfig, 0, len(p.cfg.Instances))
+
+	for _, inst := range p.cfg.Instances {
+		if inst.Name != "" && inst.URL != "" {
+			validInstances = append(validInstances, inst)
+		}
+	}
+
+	p.cfg.Instances = validInstances
+
+	// If no valid instances remain, signal that this plugin should be skipped.
+	if len(p.cfg.Instances) == 0 {
+		return plugin.ErrNoValidConfig
+	}
+
+	return nil
 }
 
 func (p *Plugin) ApplyDefaults() {
@@ -84,28 +103,6 @@ func (p *Plugin) SandboxEnv() (map[string]string, error) {
 	return map[string]string{
 		"ETHPANDAOPS_PROMETHEUS_DATASOURCES": string(infosJSON),
 	}, nil
-}
-
-// ProxyConfig returns the configuration needed by the credential proxy.
-func (p *Plugin) ProxyConfig() any {
-	if len(p.cfg.Instances) == 0 {
-		return nil
-	}
-
-	configs := make([]handlers.PrometheusConfig, 0, len(p.cfg.Instances))
-
-	for _, inst := range p.cfg.Instances {
-		configs = append(configs, handlers.PrometheusConfig{
-			Name:       inst.Name,
-			URL:        inst.URL,
-			Username:   inst.Username,
-			Password:   inst.Password,
-			SkipVerify: inst.SkipVerify,
-			Timeout:    inst.Timeout,
-		})
-	}
-
-	return configs
 }
 
 func (p *Plugin) DatasourceInfo() []types.DatasourceInfo {

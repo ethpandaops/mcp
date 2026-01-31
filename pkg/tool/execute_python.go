@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/plugin"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
+	"github.com/ethpandaops/mcp/pkg/types"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -181,7 +183,7 @@ func newExecutePythonHandler(
 		}).Info("Executing Python code")
 
 		// Build credential-free environment variables for the sandbox.
-		env, err := buildSandboxEnv(cfg, pluginReg, proxySvc)
+		env, err := buildSandboxEnv(pluginReg, proxySvc)
 		if err != nil {
 			handlerLog.WithError(err).Error("Failed to build sandbox environment")
 
@@ -312,7 +314,6 @@ func formatSize(bytes int64) string {
 // The proxy URL and datasource info are included, but no credentials.
 // The token is added separately by the caller.
 func buildSandboxEnv(
-	cfg *config.Config,
 	pluginReg *plugin.Registry,
 	proxySvc proxy.Service,
 ) (map[string]string, error) {
@@ -331,10 +332,96 @@ func buildSandboxEnv(
 		env["ETHPANDAOPS_S3_BUCKET"] = bucket
 	}
 
-	// Add public URL prefix for S3 if configured.
-	if cfg.Storage != nil && cfg.Storage.PublicURLPrefix != "" {
-		env["ETHPANDAOPS_S3_PUBLIC_URL_PREFIX"] = cfg.Storage.PublicURLPrefix
+	// Add public URL prefix for S3 if available from proxy.
+	if prefix := proxySvc.S3PublicURLPrefix(); prefix != "" {
+		env["ETHPANDAOPS_S3_PUBLIC_URL_PREFIX"] = prefix
+	}
+
+	// Datasources are proxy-authoritative; override any plugin-provided lists.
+	delete(env, "ETHPANDAOPS_CLICKHOUSE_DATASOURCES")
+	delete(env, "ETHPANDAOPS_PROMETHEUS_DATASOURCES")
+	delete(env, "ETHPANDAOPS_LOKI_DATASOURCES")
+
+	if ds := proxySvc.ClickHouseDatasourceInfo(); len(ds) > 0 {
+		env["ETHPANDAOPS_CLICKHOUSE_DATASOURCES"] = buildClickhouseDatasourceJSON(ds)
+	}
+
+	if ds := proxySvc.PrometheusDatasourceInfo(); len(ds) > 0 {
+		env["ETHPANDAOPS_PROMETHEUS_DATASOURCES"] = buildPrometheusDatasourceJSON(ds)
+	}
+
+	if ds := proxySvc.LokiDatasourceInfo(); len(ds) > 0 {
+		env["ETHPANDAOPS_LOKI_DATASOURCES"] = buildLokiDatasourceJSON(ds)
 	}
 
 	return env, nil
+}
+
+// buildClickhouseDatasourceJSON creates a JSON array of ClickHouse datasource info objects.
+func buildClickhouseDatasourceJSON(infos []types.DatasourceInfo) string {
+	type dsInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Database    string `json:"database"`
+	}
+
+	result := make([]dsInfo, 0, len(infos))
+	for _, info := range infos {
+		result = append(result, dsInfo{
+			Name:        info.Name,
+			Description: info.Description,
+			Database:    info.Metadata["database"],
+		})
+	}
+
+	return marshalDatasourceJSON(result)
+}
+
+// buildPrometheusDatasourceJSON creates a JSON array of Prometheus datasource info objects.
+func buildPrometheusDatasourceJSON(infos []types.DatasourceInfo) string {
+	type dsInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		URL         string `json:"url"`
+	}
+
+	result := make([]dsInfo, 0, len(infos))
+	for _, info := range infos {
+		result = append(result, dsInfo{
+			Name:        info.Name,
+			Description: info.Description,
+			URL:         info.Metadata["url"],
+		})
+	}
+
+	return marshalDatasourceJSON(result)
+}
+
+// buildLokiDatasourceJSON creates a JSON array of Loki datasource info objects.
+func buildLokiDatasourceJSON(infos []types.DatasourceInfo) string {
+	type dsInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		URL         string `json:"url"`
+	}
+
+	result := make([]dsInfo, 0, len(infos))
+	for _, info := range infos {
+		result = append(result, dsInfo{
+			Name:        info.Name,
+			Description: info.Description,
+			URL:         info.Metadata["url"],
+		})
+	}
+
+	return marshalDatasourceJSON(result)
+}
+
+func marshalDatasourceJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "[]"
+	}
+
+	return string(data)
 }
