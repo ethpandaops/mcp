@@ -1,0 +1,122 @@
+assertoor_test_overview:
+  name: Test Overview
+  description: Query Assertoor for test runs and status
+  examples:
+    - name: List test runs
+      description: Get a list of all test runs
+      query: |
+        from ethpandaops import assertoor
+
+        # List available networks with Assertoor instances
+        networks = assertoor.list_networks()
+        print(f"Available networks: {[n['name'] for n in networks]}")
+
+        # Get test runs for a specific network
+        network = "holesky"
+        test_runs = assertoor.get_test_runs(network)
+        print(f"Recent test runs on {network}:")
+        for run in test_runs[:5]:
+            print(f"  Run {run['run_id']}: {run['name']} ({run['status']})")
+
+    - name: Get test run details
+      description: Get detailed information about a specific test run
+      query: |
+        from ethpandaops import assertoor
+
+        # Get test run details
+        network = "holesky"
+        run_id = 123  # Replace with actual run ID
+        
+        details = assertoor.get_test_run_details(network, run_id)
+        print(f"Test: {details['name']}")
+        print(f"Status: {details['status']}")
+        print(f"Tasks: {len(details.get('tasks', []))}")
+        
+        for task in details.get('tasks', [])[:5]:
+            print(f"  - {task['title']}: {task['status']} ({task['result']})")
+
+assertoor_test_monitoring:
+  name: Test Monitoring
+  description: Monitor test execution and results
+  examples:
+    - name: Check test status
+      description: Check the status of a running test
+      query: |
+        from ethpandaops import assertoor
+
+        network = "holesky"
+        run_id = 123
+        
+        status = assertoor.get_test_run_status(network, run_id)
+        print(f"Run {status['run_id']}: {status['status']}")
+        
+        if status['status'] == 'running':
+            print("Test is still running...")
+        elif status['status'] == 'success':
+            print("Test completed successfully!")
+        elif status['status'] == 'failure':
+            print("Test failed!")
+
+    - name: Get task logs
+      description: Retrieve logs from a specific task
+      query: |
+        from ethpandaops import assertoor
+
+        network = "holesky"
+        run_id = 123
+        task_index = 0
+        
+        task = assertoor.get_task_details(network, run_id, task_index)
+        print(f"Task: {task['title']}")
+        print(f"Status: {task['status']}")
+        print(f"Logs:")
+        for log in task.get('log', [])[:10]:
+            print(f"  [{log['time']}] {log['message']}")
+
+assertoor_deep_links:
+  name: Deep Links
+  description: Generate Assertoor web UI links
+  examples:
+    - name: Generate links to test pages
+      description: Create deep links to view tests in Assertoor UI
+      query: |
+        from ethpandaops import assertoor
+
+        network = "holesky"
+        run_id = 123
+        
+        # Link to test run overview
+        test_link = assertoor.link_test_run(network, run_id)
+        print(f"Test run: {test_link}")
+        
+        # Link to specific task
+        task_link = assertoor.link_task(network, run_id, 0)
+        print(f"Task: {task_link}")
+        
+        # Link to task logs
+        logs_link = assertoor.link_task_logs(network, run_id, 0)
+        print(f"Task logs: {logs_link}")
+
+assertoor_combined_workflows:
+  name: Combined Workflows
+  description: Combine Assertoor with other data sources
+  examples:
+    - name: Monitor testnet health
+      description: Combine network status with Assertoor test results
+      query: |
+        from ethpandaops import assertoor, dora
+
+        network = "holesky"
+        
+        # Get network status
+        overview = dora.get_network_overview(network)
+        print(f"=== {network.upper()} Network ===")
+        print(f"Current epoch: {overview['current_epoch']}")
+        
+        # Get recent Assertoor tests
+        test_runs = assertoor.get_test_runs(network, limit=5)
+        print(f"\nRecent Assertoor Tests:")
+        for run in test_runs:
+            status_icon = "✓" if run['status'] == 'success' else "✗" if run['status'] == 'failure' else "⟳"
+            print(f"  {status_icon} {run['name']} ({run['status']})")
+            print(f"     View: {assertoor.link_test_run(network, run['run_id'])}")

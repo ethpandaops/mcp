@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/tool"
 	"github.com/ethpandaops/mcp/runbooks"
 
+	assertoorplugin "github.com/ethpandaops/mcp/plugins/assertoor"
 	clickhouseplugin "github.com/ethpandaops/mcp/plugins/clickhouse"
 	doraplugin "github.com/ethpandaops/mcp/plugins/dora"
 	lokiplugin "github.com/ethpandaops/mcp/plugins/loki"
@@ -199,6 +200,7 @@ func (b *Builder) buildPluginRegistry() (*plugin.Registry, error) {
 	reg := plugin.NewRegistry(b.log)
 
 	// Register all compiled-in plugins.
+	reg.Add(assertoorplugin.New())
 	reg.Add(clickhouseplugin.New())
 	reg.Add(doraplugin.New())
 	reg.Add(lokiplugin.New())
