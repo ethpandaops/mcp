@@ -95,3 +95,9 @@ audit:
   enabled: true
   log_queries: true
   max_query_length: 500
+
+# Logging configuration
+logging:
+  level: info          # debug, info, warn, error
+  format: text         # text or json
+  output_path: ""      # Optional: file path for log output (default: stdout)

@@ -5,6 +5,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/ethpandaops/mcp/pkg/config"
+	"github.com/ethpandaops/mcp/pkg/observability"
 )
 
 var (
@@ -20,15 +23,48 @@ var rootCmd = &cobra.Command{
 Ethereum network analytics capabilities including ClickHouse blockchain data,
 Prometheus metrics, Loki logs, and sandboxed Python execution.`,
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-		level, err := logrus.ParseLevel(logLevel)
+		// Load config to get logging settings if available.
+		cfg, err := config.Load(cfgFile)
 		if err != nil {
-			return err
+			// Fall back to CLI flag if config fails to load.
+			level, err := logrus.ParseLevel(logLevel)
+			if err != nil {
+				return err
+			}
+			log.SetLevel(level)
+			log.SetFormatter(&logrus.TextFormatter{
+				FullTimestamp: true,
+			})
+			return nil
 		}
 
-		log.SetLevel(level)
-		log.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp: true,
-		})
+		// Configure logging based on config file.
+		loggerCfg := observability.LoggerConfig{
+			Level:      observability.LogLevel(cfg.Observability.Logging.Level),
+			Format:     observability.LogFormat(cfg.Observability.Logging.Format),
+			OutputPath: cfg.Observability.Logging.OutputPath,
+		}
+
+		// CLI flag overrides config file.
+		if logLevel != "" && logLevel != "info" {
+			loggerCfg.Level = observability.LogLevel(logLevel)
+		}
+
+		configuredLog, err := observability.ConfigureLogger(loggerCfg)
+		if err != nil {
+			// Fall back to default logging.
+			level, _ := logrus.ParseLevel(logLevel)
+			log.SetLevel(level)
+			log.SetFormatter(&logrus.TextFormatter{
+				FullTimestamp: true,
+			})
+			return nil
+		}
+
+		// Copy settings to the global log.
+		log.SetLevel(configuredLog.Level)
+		log.SetFormatter(configuredLog.Formatter)
+		log.SetOutput(configuredLog.Out)
 
 		return nil
 	},

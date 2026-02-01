@@ -390,6 +390,10 @@ func (s *service) runStreamableHTTP(ctx context.Context) error {
 func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 	r := chi.NewRouter()
 
+	// Apply logging middleware first to capture all requests.
+	loggingMiddleware := observability.NewLoggingMiddleware(s.log.(*logrus.Logger))
+	r.Use(loggingMiddleware.Middleware())
+
 	// Apply auth middleware if enabled.
 	if s.auth != nil && s.auth.Enabled() {
 		r.Use(s.auth.Middleware())
@@ -422,6 +426,10 @@ func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 // buildStreamableHTTPHandler creates an HTTP handler for Streamable HTTP transport.
 func (s *service) buildStreamableHTTPHandler(mcpHandler http.Handler) http.Handler {
 	r := chi.NewRouter()
+
+	// Apply logging middleware first to capture all requests.
+	loggingMiddleware := observability.NewLoggingMiddleware(s.log.(*logrus.Logger))
+	r.Use(loggingMiddleware.Middleware())
 
 	// Apply auth middleware if enabled.
 	if s.auth != nil && s.auth.Enabled() {

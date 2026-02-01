@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ethpandaops/mcp/internal/version"
+	"github.com/ethpandaops/mcp/pkg/observability"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 )
 
@@ -34,13 +35,48 @@ var rootCmd = &cobra.Command{
 Prometheus, and Loki backends. This is designed for Kubernetes deployment where
 the proxy runs centrally and MCP clients connect using JWTs for authentication.`,
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-		level, err := logrus.ParseLevel(logLevel)
+		// Load config to get logging settings if available.
+		cfg, err := proxy.LoadServerConfig(cfgFile)
 		if err != nil {
-			return err
+			// Fall back to CLI flag if config fails to load.
+			level, err := logrus.ParseLevel(logLevel)
+			if err != nil {
+				return err
+			}
+			log.SetLevel(level)
+			log.SetFormatter(&logrus.TextFormatter{
+				FullTimestamp: true,
+			})
+			return nil
 		}
 
-		log.SetLevel(level)
-		log.SetFormatter(&logrus.JSONFormatter{})
+		// Configure logging based on config file.
+		loggerCfg := observability.LoggerConfig{
+			Level:      observability.LogLevel(cfg.Logging.Level),
+			Format:     observability.LogFormat(cfg.Logging.Format),
+			OutputPath: cfg.Logging.OutputPath,
+		}
+
+		// CLI flag overrides config file.
+		if logLevel != "" && logLevel != "info" {
+			loggerCfg.Level = observability.LogLevel(logLevel)
+		}
+
+		configuredLog, err := observability.ConfigureLogger(loggerCfg)
+		if err != nil {
+			// Fall back to default logging.
+			level, _ := logrus.ParseLevel(logLevel)
+			log.SetLevel(level)
+			log.SetFormatter(&logrus.TextFormatter{
+				FullTimestamp: true,
+			})
+			return nil
+		}
+
+		// Copy settings to the global log.
+		log.SetLevel(configuredLog.Level)
+		log.SetFormatter(configuredLog.Formatter)
+		log.SetOutput(configuredLog.Out)
 
 		return nil
 	},
