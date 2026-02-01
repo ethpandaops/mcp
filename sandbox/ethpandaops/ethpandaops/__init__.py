@@ -2,6 +2,7 @@
 
 This library provides direct access to Ethereum network data:
 - ClickHouse: Raw and aggregated blockchain data
+- CBT: ClickHouse Build Tool model metadata and transformation state
 - Prometheus: Infrastructure metrics
 - Loki: Log data
 - Storage: S3-compatible file storage for outputs
@@ -10,7 +11,7 @@ Use list_datasources() on each module to discover available datasources or
 check the datasources://list MCP resource.
 
 Example usage:
-    from ethpandaops import clickhouse, prometheus, loki, storage
+    from ethpandaops import clickhouse, cbt, prometheus, loki, storage
 
     # List available ClickHouse clusters
     clusters = clickhouse.list_datasources()
@@ -18,6 +19,10 @@ Example usage:
 
     # Query ClickHouse using cluster name
     df = clickhouse.query(cluster_name, "SELECT * FROM beacon_api_eth_v1_events_block LIMIT 10")
+
+    # Query CBT for model metadata
+    models = cbt.list_models()
+    status = cbt.get_transformation_status("analytics", "block_propagation")
 
     # Query Prometheus using instance name
     result = prometheus.query("ethpandaops", "up")
@@ -35,8 +40,8 @@ __version__ = "0.1.0"
 
 
 def __getattr__(name):
-    """Lazy import for plugin modules (clickhouse, prometheus, loki, dora)."""
-    if name in ("clickhouse", "prometheus", "loki", "dora"):
+    """Lazy import for plugin modules (clickhouse, cbt, prometheus, loki, dora)."""
+    if name in ("clickhouse", "cbt", "prometheus", "loki", "dora"):
         import importlib
 
         mod = importlib.import_module(f".{name}", __name__)

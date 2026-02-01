@@ -29,6 +29,9 @@ type ServerConfig struct {
 	// Loki holds Loki instance configurations.
 	Loki []LokiInstanceConfig `yaml:"loki,omitempty"`
 
+	// CBT holds CBT (ClickHouse Build Tool) instance configurations.
+	CBT []CBTInstanceConfig `yaml:"cbt,omitempty"`
+
 	// S3 holds S3 storage configuration.
 	S3 *S3Config `yaml:"s3,omitempty"`
 
@@ -96,6 +99,15 @@ type LokiInstanceConfig struct {
 	URL         string `yaml:"url"`
 	Username    string `yaml:"username,omitempty"`
 	Password    string `yaml:"password,omitempty"`
+}
+
+// CBTInstanceConfig holds CBT instance configuration.
+type CBTInstanceConfig struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description,omitempty"`
+	URL         string `yaml:"url"`
+	UIURL       string `yaml:"ui_url,omitempty"`
+	Timeout     int    `yaml:"timeout,omitempty"`
 }
 
 // S3Config holds S3 storage configuration.
@@ -249,7 +261,7 @@ func (c *ServerConfig) Validate() error {
 }
 
 // ToHandlerConfigs converts the server config to handler configs.
-func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handlers.PrometheusConfig, []handlers.LokiConfig, *handlers.S3Config) {
+func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handlers.PrometheusConfig, []handlers.LokiConfig, []handlers.CBTConfig, *handlers.S3Config) {
 	// Convert ClickHouse configs.
 	chConfigs := make([]handlers.ClickHouseConfig, len(c.ClickHouse))
 	for i, ch := range c.ClickHouse {
@@ -288,6 +300,16 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 		}
 	}
 
+	// Convert CBT configs.
+	cbtConfigs := make([]handlers.CBTConfig, len(c.CBT))
+	for i, cbt := range c.CBT {
+		cbtConfigs[i] = handlers.CBTConfig{
+			Name:    cbt.Name,
+			URL:     cbt.URL,
+			Timeout: cbt.Timeout,
+		}
+	}
+
 	// Convert S3 config.
 	var s3Config *handlers.S3Config
 	if c.S3 != nil && c.S3.Endpoint != "" {
@@ -301,7 +323,7 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 		}
 	}
 
-	return chConfigs, promConfigs, lokiConfigs, s3Config
+	return chConfigs, promConfigs, lokiConfigs, cbtConfigs, s3Config
 }
 
 // envVarWithDefaultPattern matches ${VAR_NAME:-default} patterns.

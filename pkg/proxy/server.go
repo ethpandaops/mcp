@@ -36,6 +36,9 @@ type Server interface {
 	// LokiDatasources returns the list of Loki datasource names.
 	LokiDatasources() []string
 
+	// CBTDatasources returns the list of CBT datasource names.
+	CBTDatasources() []string
+
 	// S3Bucket returns the configured S3 bucket name.
 	S3Bucket() string
 }
@@ -54,6 +57,7 @@ type server struct {
 	clickhouseHandler *handlers.ClickHouseHandler
 	prometheusHandler *handlers.PrometheusHandler
 	lokiHandler       *handlers.LokiHandler
+	cbtHandler        *handlers.CBTHandler
 	s3Handler         *handlers.S3Handler
 
 	mu      sync.RWMutex
@@ -106,7 +110,7 @@ func NewServer(log logrus.FieldLogger, cfg ServerConfig) (Server, error) {
 	}
 
 	// Create handlers from config.
-	chConfigs, promConfigs, lokiConfigs, s3Config := cfg.ToHandlerConfigs()
+	chConfigs, promConfigs, lokiConfigs, cbtConfigs, s3Config := cfg.ToHandlerConfigs()
 
 	if len(chConfigs) > 0 {
 		s.clickhouseHandler = handlers.NewClickHouseHandler(log, chConfigs)
@@ -118,6 +122,10 @@ func NewServer(log logrus.FieldLogger, cfg ServerConfig) (Server, error) {
 
 	if len(lokiConfigs) > 0 {
 		s.lokiHandler = handlers.NewLokiHandler(log, lokiConfigs)
+	}
+
+	if len(cbtConfigs) > 0 {
+		s.cbtHandler = handlers.NewCBTHandler(log, cbtConfigs)
 	}
 
 	if s3Config != nil && s3Config.Endpoint != "" {
@@ -172,6 +180,10 @@ func (s *server) registerRoutes() {
 		s.mux.Handle("/loki/", chain(s.lokiHandler))
 	}
 
+	if s.cbtHandler != nil {
+		s.mux.Handle("/cbt/", chain(s.cbtHandler))
+	}
+
 	if s.s3Handler != nil {
 		s.mux.Handle("/s3/", chain(s.s3Handler))
 	}
@@ -205,9 +217,11 @@ type DatasourcesResponse struct {
 	ClickHouse        []string               `json:"clickhouse,omitempty"`
 	Prometheus        []string               `json:"prometheus,omitempty"`
 	Loki              []string               `json:"loki,omitempty"`
+	CBT               []string               `json:"cbt,omitempty"`
 	ClickHouseInfo    []types.DatasourceInfo `json:"clickhouse_info,omitempty"`
 	PrometheusInfo    []types.DatasourceInfo `json:"prometheus_info,omitempty"`
 	LokiInfo          []types.DatasourceInfo `json:"loki_info,omitempty"`
+	CBTInfo           []types.DatasourceInfo `json:"cbt_info,omitempty"`
 	S3Bucket          string                 `json:"s3_bucket,omitempty"`
 	S3PublicURLPrefix string                 `json:"s3_public_url_prefix,omitempty"`
 }
@@ -218,9 +232,11 @@ func (s *server) handleDatasources(w http.ResponseWriter, _ *http.Request) {
 		ClickHouse:        s.ClickHouseDatasources(),
 		Prometheus:        s.PrometheusDatasources(),
 		Loki:              s.LokiDatasources(),
+		CBT:               s.CBTDatasources(),
 		ClickHouseInfo:    s.ClickHouseDatasourceInfo(),
 		PrometheusInfo:    s.PrometheusDatasourceInfo(),
 		LokiInfo:          s.LokiDatasourceInfo(),
+		CBTInfo:           s.CBTDatasourceInfo(),
 		S3Bucket:          s.S3Bucket(),
 		S3PublicURLPrefix: s.S3PublicURLPrefix(),
 	}
@@ -409,6 +425,39 @@ func (s *server) LokiDatasourceInfo() []types.DatasourceInfo {
 		if loki.URL != "" {
 			info.Metadata = map[string]string{
 				"url": loki.URL,
+			}
+		}
+		result = append(result, info)
+	}
+
+	return result
+}
+
+// CBTDatasources returns the list of CBT datasource names.
+func (s *server) CBTDatasources() []string {
+	if s.cbtHandler == nil {
+		return nil
+	}
+
+	return s.cbtHandler.Instances()
+}
+
+// CBTDatasourceInfo returns detailed CBT datasource info.
+func (s *server) CBTDatasourceInfo() []types.DatasourceInfo {
+	if len(s.cfg.CBT) == 0 {
+		return nil
+	}
+
+	result := make([]types.DatasourceInfo, 0, len(s.cfg.CBT))
+	for _, cbt := range s.cfg.CBT {
+		info := types.DatasourceInfo{
+			Type:        "cbt",
+			Name:        cbt.Name,
+			Description: cbt.Description,
+		}
+		if cbt.URL != "" {
+			info.Metadata = map[string]string{
+				"url": cbt.URL,
 			}
 		}
 		result = append(result, info)

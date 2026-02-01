@@ -26,6 +26,7 @@ RUN uv pip install --system --no-cache -r /tmp/requirements.txt && \
 COPY sandbox/ethpandaops /opt/ethpandaops-pkg
 
 # Copy plugin Python modules into the package
+COPY plugins/cbt/python/cbt.py /opt/ethpandaops-pkg/ethpandaops/cbt.py
 COPY plugins/clickhouse/python/clickhouse.py /opt/ethpandaops-pkg/ethpandaops/clickhouse.py
 COPY plugins/dora/python/dora.py /opt/ethpandaops-pkg/ethpandaops/dora.py
 COPY plugins/loki/python/loki.py /opt/ethpandaops-pkg/ethpandaops/loki.py
