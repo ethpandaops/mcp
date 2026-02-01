@@ -1,0 +1,839 @@
+openapi: 3.0.3
+info:
+  title: ethpandaops MCP Server API
+  description: |
+    Model Context Protocol (MCP) server for Ethereum network analytics.
+    
+    This API provides:
+    - **MCP Protocol**: Model Context Protocol endpoints for AI assistant integration
+    - **Authentication**: OAuth 2.1 / GitHub OAuth flow for secure access
+    - **Health Checks**: Liveness and readiness probes
+    - **Proxy Data Access**: ClickHouse, Prometheus, Loki, and S3 data sources
+    
+    ## Authentication
+    
+    When authentication is enabled, the server uses OAuth 2.1 with GitHub as the identity provider:
+    
+    1. Discover OAuth metadata at `/.well-known/oauth-authorization-server`
+    2. Initiate flow at `/auth/authorize` with PKCE
+    3. Complete GitHub OAuth and receive authorization code
+    4. Exchange code for JWT at `/auth/token`
+    5. Include JWT as `Authorization: Bearer <token>` header
+    
+    ## Transports
+    
+    The server supports multiple MCP transports:
+    - **stdio**: Standard input/output (default, for CLI usage)
+    - **sse**: Server-Sent Events on `/sse` and `/message`
+    - **streamable-http**: HTTP streaming on `/mcp`
+  version: "1.0.0"
+  contact:
+    name: ethpandaops
+    url: https://github.com/ethpandaops/mcp
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:2480
+    description: Local development server
+  - url: http://localhost:18081
+    description: Proxy server
+
+paths:
+  # Health endpoints
+  /health:
+    get:
+      summary: Health check
+      description: Returns 200 OK if the server is running
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ok"
+  
+  /ready:
+    get:
+      summary: Readiness check
+      description: Returns 200 OK if the server is ready to accept requests
+      operationId: readinessCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ready"
+        '503':
+          description: Server is not ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "not ready"
+
+  # MCP Protocol endpoints (streamable-http transport)
+  /mcp:
+    post:
+      summary: MCP protocol endpoint
+      description: |
+        Main endpoint for Model Context Protocol (MCP) communication.
+        
+        Accepts JSON-RPC 2.0 requests for:
+        - Initialize connection
+        - Call tools (execute_python, search_examples, etc.)
+        - Read resources (datasources, examples, etc.)
+        - Subscribe to notifications
+        
+        Supports both request/response and streaming modes.
+      operationId: mcpEndpoint
+      tags:
+        - MCP Protocol
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPRequest'
+            examples:
+              initialize:
+                summary: Initialize connection
+                value:
+                  jsonrpc: "2.0"
+                  id: 1
+                  method: initialize
+                  params:
+                    protocolVersion: "2024-11-05"
+                    capabilities:
+                      tools: {}
+                      resources: {}
+                    clientInfo:
+                      name: "example-client"
+                      version: "1.0.0"
+              callTool:
+                summary: Call execute_python tool
+                value:
+                  jsonrpc: "2.0"
+                  id: 2
+                  method: tools/call
+                  params:
+                    name: "execute_python"
+                    arguments:
+                      code: "print('Hello, World!')"
+              readResource:
+                summary: Read datasources resource
+                value:
+                  jsonrpc: "2.0"
+                  id: 3
+                  method: resources/read
+                  params:
+                    uri: "datasources://list"
+      responses:
+        '200':
+          description: MCP response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPResponse'
+              examples:
+                initialize:
+                  summary: Initialize response
+                  value:
+                    jsonrpc: "2.0"
+                    id: 1
+                    result:
+                      protocolVersion: "2024-11-05"
+                      capabilities:
+                        tools: {}
+                        resources: {}
+                      serverInfo:
+                        name: "ethpandaops-mcp"
+                        version: "1.0.0"
+                toolResult:
+                  summary: Tool execution result
+                  value:
+                    jsonrpc: "2.0"
+                    id: 2
+                    result:
+                      content:
+                        - type: text
+                          text: "Hello, World!"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # SSE transport endpoints
+  /sse:
+    get:
+      summary: SSE transport endpoint
+      description: |
+        Server-Sent Events endpoint for MCP communication.
+        
+        Establishes a persistent connection for server-to-client streaming.
+        Clients receive events for:
+        - Connection initialization
+        - Tool results
+        - Resource updates
+        - Notifications
+        
+        Use with `/message` endpoint for client-to-server requests.
+      operationId: sseEndpoint
+      tags:
+        - MCP Protocol
+        - SSE Transport
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: endpoint
+                data: /message?session_id=abc123
+
+  /message:
+    post:
+      summary: SSE message endpoint
+      description: |
+        POST endpoint for sending MCP requests when using SSE transport.
+        
+        Send JSON-RPC 2.0 requests here after connecting to `/sse`.
+        Responses are delivered via the SSE stream.
+      operationId: sseMessage
+      tags:
+        - MCP Protocol
+        - SSE Transport
+      parameters:
+        - name: session_id
+          in: query
+          description: Session ID from the SSE connection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPRequest'
+      responses:
+        '202':
+          description: Request accepted, response via SSE
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # OAuth endpoints
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: OAuth authorization server metadata
+      description: |
+        Returns RFC 8414 OAuth authorization server metadata.
+        
+        Clients use this to discover OAuth endpoints and supported features.
+      operationId: oauthServerMetadata
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: OAuth server metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthServerMetadata'
+              example:
+                issuer: "http://localhost:2480"
+                authorization_endpoint: "http://localhost:2480/auth/authorize"
+                token_endpoint: "http://localhost:2480/auth/token"
+                response_types_supported:
+                  - code
+                grant_types_supported:
+                  - authorization_code
+                code_challenge_methods_supported:
+                  - S256
+                token_endpoint_auth_methods_supported:
+                  - none
+                scopes_supported:
+                  - mcp
+
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: OAuth protected resource metadata
+      description: |
+        Returns RFC 9728 OAuth protected resource metadata.
+        
+        Describes the protected resource and associated authorization servers.
+      operationId: oauthResourceMetadata
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: OAuth resource metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResourceMetadata'
+              example:
+                resource: "http://localhost:2480"
+                authorization_servers:
+                  - "http://localhost:2480"
+                bearer_methods_supported:
+                  - header
+                scopes_supported:
+                  - mcp
+
+  /auth/authorize:
+    get:
+      summary: OAuth authorization endpoint
+      description: |
+        Initiates the OAuth 2.1 authorization flow with PKCE.
+        
+        Required query parameters:
+        - `client_id`: The client identifier
+        - `redirect_uri`: Where to redirect after authorization
+        - `code_challenge`: PKCE code challenge (S256)
+        - `code_challenge_method`: Must be "S256"
+        - `resource`: The protected resource (RFC 8707)
+        - `state`: Optional state for CSRF protection
+        
+        Redirects to GitHub for authentication, then back to `redirect_uri`.
+      operationId: oauthAuthorize
+      tags:
+        - Authentication
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [S256]
+        - name: resource
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirects to GitHub OAuth
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /auth/callback:
+    get:
+      summary: OAuth callback endpoint
+      description: |
+        Handles the GitHub OAuth callback.
+        
+        This endpoint is called by GitHub after user authentication.
+        It validates the user, checks organization membership, and redirects
+        back to the client with an authorization code.
+      operationId: oauthCallback
+      tags:
+        - Authentication
+      parameters:
+        - name: code
+          in: query
+          description: GitHub authorization code
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: State parameter from authorization request
+          schema:
+            type: string
+        - name: error
+          in: query
+          description: Error code if authentication failed
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          description: Error description
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirects to client with authorization code
+        '400':
+          description: Authentication error
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /auth/token:
+    post:
+      summary: OAuth token endpoint
+      description: |
+        Exchanges an authorization code for an access token.
+        
+        Required form parameters:
+        - `grant_type`: Must be "authorization_code"
+        - `code`: The authorization code received from callback
+        - `redirect_uri`: Must match the authorization request
+        - `client_id`: The client identifier
+        - `code_verifier`: PKCE code verifier
+        - `resource`: The protected resource
+        
+        Returns a JWT access token valid for 1 hour.
+      operationId: oauthToken
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - grant_type
+                - code
+                - redirect_uri
+                - client_id
+                - code_verifier
+                - resource
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code]
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                  format: uri
+                client_id:
+                  type: string
+                code_verifier:
+                  type: string
+                resource:
+                  type: string
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: "eyJhbGciOiJIUzI1NiIs..."
+                token_type: Bearer
+                expires_in: 3600
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  # Proxy server endpoints
+  /datasources:
+    get:
+      summary: List datasources
+      description: |
+        Returns information about configured data sources.
+        
+        Includes ClickHouse clusters, Prometheus instances, Loki instances,
+        and S3 bucket configuration.
+      operationId: listDatasources
+      tags:
+        - Proxy
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Datasources information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourcesResponse'
+              example:
+                clickhouse:
+                  - mainnet
+                  - holesky
+                prometheus:
+                  - default
+                loki:
+                  - default
+                clickhouse_info:
+                  - type: clickhouse
+                    name: mainnet
+                    description: "Mainnet ClickHouse cluster"
+                    metadata:
+                      database: default
+                s3_bucket: "mcp-outputs"
+                s3_public_url_prefix: "https://minio.example.com/mcp-outputs"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /clickhouse/{cluster}:
+    post:
+      summary: Execute ClickHouse query
+      description: |
+        Executes a SQL query on the specified ClickHouse cluster.
+        
+        The request body is passed directly to ClickHouse HTTP interface.
+      operationId: clickhouseQuery
+      tags:
+        - Proxy
+        - ClickHouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cluster
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+            example: "SELECT * FROM blocks LIMIT 10"
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /prometheus/{instance}:
+    get:
+      summary: Prometheus query
+      description: |
+        Proxies requests to the specified Prometheus instance.
+        
+        Supports all standard Prometheus HTTP API endpoints.
+      operationId: prometheusQuery
+      tags:
+        - Proxy
+        - Prometheus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: instance
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Prometheus response
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /loki/{instance}:
+    get:
+      summary: Loki query
+      description: |
+        Proxies requests to the specified Loki instance.
+        
+        Supports all standard Loki HTTP API endpoints.
+      operationId: lokiQuery
+      tags:
+        - Proxy
+        - Loki
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: instance
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Loki response
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /s3/{bucket}:
+    get:
+      summary: S3 object access
+      description: |
+        Proxies requests to S3-compatible storage.
+        
+        Supports GET and PUT operations for object storage.
+      operationId: s3Access
+      tags:
+        - Proxy
+        - S3
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: S3 response
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/token
+
+  schemas:
+    MCPRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        method:
+          type: string
+          description: MCP method name
+          enum:
+            - initialize
+            - ping
+            - tools/list
+            - tools/call
+            - resources/list
+            - resources/read
+            - resources/templates/list
+            - prompts/list
+            - prompts/get
+            - completion/complete
+        params:
+          type: object
+          description: Method-specific parameters
+
+    MCPResponse:
+      type: object
+      required:
+        - jsonrpc
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        result:
+          type: object
+          description: Successful result (if no error)
+        error:
+          $ref: '#/components/schemas/MCPError'
+
+    MCPError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          description: JSON-RPC error code
+        message:
+          type: string
+          description: Error message
+        data:
+          type: object
+          description: Additional error data
+
+    OAuthServerMetadata:
+      type: object
+      properties:
+        issuer:
+          type: string
+          format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
+        token_endpoint:
+          type: string
+          format: uri
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+
+    OAuthResourceMetadata:
+      type: object
+      properties:
+        resource:
+          type: string
+          format: uri
+        authorization_servers:
+          type: array
+          items:
+            type: string
+            format: uri
+        bearer_methods_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+
+    OAuthError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error code
+        error_description:
+          type: string
+          description: Human-readable error description
+
+    DatasourceInfo:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Datasource type
+        name:
+          type: string
+          description: Logical name
+        description:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    DatasourcesResponse:
+      type: object
+      properties:
+        clickhouse:
+          type: array
+          items:
+            type: string
+          description: ClickHouse cluster names
+        prometheus:
+          type: array
+          items:
+            type: string
+          description: Prometheus instance names
+        loki:
+          type: array
+          items:
+            type: string
+          description: Loki instance names
+        clickhouse_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasourceInfo'
+        prometheus_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasourceInfo'
+        loki_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasourceInfo'
+        s3_bucket:
+          type: string
+        s3_public_url_prefix:
+          type: string
+          format: uri
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing JWT token
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Bearer token authentication challenge
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthError'
+          example:
+            error: invalid_token
+            error_description: Missing or invalid Authorization header
