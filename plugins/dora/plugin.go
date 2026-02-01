@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -180,3 +181,41 @@ func (p *Plugin) RegisterResources(_ logrus.FieldLogger, _ plugin.ResourceRegist
 func (p *Plugin) Start(_ context.Context) error { return nil }
 
 func (p *Plugin) Stop(_ context.Context) error { return nil }
+
+// HealthCheck performs a health check on the Dora plugin.
+func (p *Plugin) HealthCheck(_ context.Context) plugin.HealthCheckResult {
+	checkedAt := time.Now()
+
+	// Check if plugin is enabled
+	if !p.cfg.IsEnabled() {
+		return plugin.HealthCheckResult{
+			Status:    plugin.HealthStatusHealthy,
+			Message:   "Plugin disabled",
+			CheckedAt: checkedAt,
+		}
+	}
+
+	// Check if cartographoor client is set
+	if p.cartographoorClient == nil {
+		return plugin.HealthCheckResult{
+			Status:    plugin.HealthStatusHealthy,
+			Message:   "Enabled but cartographoor client not yet initialized",
+			CheckedAt: checkedAt,
+		}
+	}
+
+	// Count available networks
+	networks := p.cartographoorClient.GetActiveNetworks()
+	doraNetworkCount := 0
+	for _, network := range networks {
+		if network.ServiceURLs != nil && network.ServiceURLs.Dora != "" {
+			doraNetworkCount++
+		}
+	}
+
+	return plugin.HealthCheckResult{
+		Status:    plugin.HealthStatusHealthy,
+		Message:   fmt.Sprintf("%d network(s) with Dora explorers available", doraNetworkCount),
+		CheckedAt: checkedAt,
+	}
+}
