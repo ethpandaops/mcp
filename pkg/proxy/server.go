@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/mcp/pkg/openapi"
 	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
@@ -175,6 +176,20 @@ func (s *server) registerRoutes() {
 	if s.s3Handler != nil {
 		s.mux.Handle("/s3/", chain(s.s3Handler))
 	}
+
+	// OpenAPI documentation endpoints (no auth required).
+	// Mount this last as a fallback handler that checks specific paths.
+	openAPIHandler := openapi.Handler()
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only handle OpenAPI-related paths
+		switch r.URL.Path {
+		case "/openapi.yaml", "/openapi.json", "/docs", "/docs/swagger-ui.css",
+			"/docs/swagger-ui-bundle.js", "/docs/swagger-ui-standalone-preset.js":
+			openAPIHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
 }
 
 // buildMiddlewareChain builds the middleware chain for authenticated routes.

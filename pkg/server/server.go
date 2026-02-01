@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/observability"
+	"github.com/ethpandaops/mcp/pkg/openapi"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 	"github.com/ethpandaops/mcp/pkg/tool"
@@ -410,6 +411,9 @@ func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 		_, _ = w.Write([]byte("ready"))
 	})
 
+	// OpenAPI documentation endpoints.
+	r.Mount("/", openapi.Handler())
+
 	// Mount MCP handler.
 	r.Handle("/sse", mcpHandler)
 	r.Handle("/sse/*", mcpHandler)
@@ -442,6 +446,9 @@ func (s *service) buildStreamableHTTPHandler(mcpHandler http.Handler) http.Handl
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
+
+	// OpenAPI documentation endpoints.
+	r.Mount("/", openapi.Handler())
 
 	// Mount Streamable HTTP MCP handler on /mcp (the standard endpoint).
 	r.Handle("/mcp", mcpHandler)
