@@ -11,6 +11,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/embedding"
+	"github.com/ethpandaops/mcp/pkg/middleware"
 	"github.com/ethpandaops/mcp/pkg/plugin"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/resource"
@@ -181,6 +182,22 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	// Create resource registry and register resources.
 	resourceReg := b.buildResourceRegistry(cartographoorClient, pluginReg, toolReg, proxyClient)
 
+	// Create rate limiter if enabled.
+	var rateLimiter *middleware.RateLimiter
+	if b.cfg.RateLimit.Enabled {
+		rateLimiter, err = middleware.NewRateLimiter(b.log, b.cfg.RateLimit)
+		if err != nil {
+			_ = authSvc.Stop()
+			_ = cartographoorClient.Stop()
+			_ = proxyClient.Stop(ctx)
+			pluginReg.StopAll(ctx)
+			_ = sandboxSvc.Stop(ctx)
+
+			return nil, fmt.Errorf("building rate limiter: %w", err)
+		}
+		b.log.Info("Rate limiter initialized")
+	}
+
 	// Create and return the server service.
 	return NewService(
 		b.log,
@@ -190,6 +207,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		resourceReg,
 		sandboxSvc,
 		authSvc,
+		rateLimiter,
 	), nil
 }
 

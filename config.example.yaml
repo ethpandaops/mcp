@@ -70,6 +70,51 @@ storage:
   region: "us-east-1"
   public_url_prefix: "${S3_PUBLIC_URL}"  # e.g., https://outputs.example.com
 
+# Rate limiting configuration
+# Protects the API from abuse with per-IP token bucket rate limiting.
+rate_limit:
+  enabled: false  # Set to true to enable rate limiting
+  backend: memory  # Backend: "memory" (default) or "redis"
+  
+  # Default rate limits applied to all tools/endpoints
+  default:
+    requests_per_second: 10.0  # Sustained rate limit
+    burst_size: 20             # Maximum burst size
+    block_duration: 60s        # How long to block after exceeding limit
+  
+  # Per-tool rate limits (optional)
+  # Different limits for specific tools - stricter for expensive operations
+  per_tool:
+    execute_python:
+      requests_per_second: 0.2  # Very strict: ~1 request per 5 seconds
+      burst_size: 2
+      block_duration: 300s
+    search_examples:
+      requests_per_second: 5.0
+      burst_size: 10
+    search_runbooks:
+      requests_per_second: 5.0
+      burst_size: 10
+    manage_session:
+      requests_per_second: 2.0
+      burst_size: 5
+  
+  # Trusted proxy configuration (for determining client IP)
+  # When behind a reverse proxy, specify which IPs/CIDRs to trust for X-Forwarded-For
+  # trusted_proxies:
+  #   - "10.0.0.0/8"
+  #   - "172.16.0.0/12"
+  #   - "192.168.0.0/16"
+  #   - "127.0.0.1"
+
+  # Redis backend configuration (only used when backend is "redis")
+  # redis:
+  #   address: "localhost:6379"
+  #   password: ""
+  #   database: 0
+  #   key_prefix: "mcp:ratelimit:"
+  #   tls: false
+
 # Authentication configuration
 # When enabled, requires GitHub OAuth for HTTP transports (SSE, streamable-http).
 # Stdio transport (local/Claude Desktop) never requires auth.
