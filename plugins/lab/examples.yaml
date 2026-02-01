@@ -1,0 +1,187 @@
+lab_network_discovery:
+  name: Network Discovery
+  description: Discover Lab-enabled networks and available routes
+  examples:
+    - name: List Lab networks
+      description: Get all networks with Lab explorers
+      query: |
+        from ethpandaops import lab
+
+        # List available networks with Lab explorers
+        networks = lab.list_networks()
+        print(f"Available networks: {[n['name'] for n in networks]}")
+
+        # Get base URL for a specific network
+        if networks:
+            base_url = lab.get_base_url(networks[0]['name'])
+            print(f"Base URL: {base_url}")
+
+    - name: Get all routes
+      description: Fetch and display all Lab routes from routes.json
+      query: |
+        from ethpandaops import lab
+
+        # Get all routes organized by category
+        routes = lab.get_routes()
+        
+        for category, route_list in routes.items():
+            print(f"\n{category}:")
+            for route in route_list:
+                print(f"  - {route['id']}: {route.get('description', 'No description')}")
+
+    - name: Get routes by category
+      description: Filter routes to a specific category
+      query: |
+        from ethpandaops import lab
+
+        # Get only Ethereum routes
+        eth_routes = lab.get_routes_by_category("ethereum")
+        print(f"Ethereum routes ({len(eth_routes)}):")
+        for route in eth_routes:
+            print(f"  - {route['id']}: {route.get('path', 'N/A')}")
+
+lab_deep_links:
+  name: Deep Links
+  description: Generate Lab explorer links for various Ethereum entities
+  examples:
+    - name: Generate slot and epoch links
+      description: Create deep links to slots and epochs
+      query: |
+        from ethpandaops import lab
+
+        network = "mainnet"
+        slot = 1000000
+        epoch = 31250
+
+        # Slot link
+        slot_link = lab.link_slot(network, slot)
+        print(f"Slot {slot}: {slot_link}")
+
+        # Epoch link
+        epoch_link = lab.link_epoch(network, epoch)
+        print(f"Epoch {epoch}: {epoch_link}")
+
+    - name: Generate validator and address links
+      description: Create deep links to validators and addresses
+      query: |
+        from ethpandaops import lab
+
+        network = "sepolia"
+
+        # Validator link
+        validator_link = lab.link_validator(network, "12345")
+        print(f"Validator: {validator_link}")
+
+        # Address link
+        address_link = lab.link_address(network, "0x742d35Cc6634C0532925a3b844Bc9e7595f1c1")
+        print(f"Address: {address_link}")
+
+    - name: Generate block and transaction links
+      description: Create deep links to blocks and transactions
+      query: |
+        from ethpandaops import lab
+
+        network = "holesky"
+
+        # Block link
+        block_link = lab.link_block(network, "1000000")
+        print(f"Block: {block_link}")
+
+        # Transaction link
+        tx_link = lab.link_transaction(network, "0xabc123...")
+        print(f"Transaction: {tx_link}")
+
+    - name: Generate blob and fork links
+      description: Create deep links to blobs and fork information
+      query: |
+        from ethpandaops import lab
+
+        network = "mainnet"
+
+        # Blob link
+        blob_link = lab.link_blob(network, "0x1234...")
+        print(f"Blob: {blob_link}")
+
+        # Fork link
+        fork_link = lab.link_fork(network, "cancun")
+        print(f"Fork: {fork_link}")
+
+lab_custom_urls:
+  name: Custom URL Building
+  description: Build custom URLs using route patterns and parameters
+  examples:
+    - name: Build URLs with parameters
+      description: Use build_url for flexible URL generation
+      query: |
+        from ethpandaops import lab
+
+        # Build a URL for a specific route
+        url = lab.build_url("mainnet", "slot", {"slot": 1000000})
+        print(f"Custom URL: {url}")
+
+        # Get route metadata first
+        route = lab.get_route("ethereum/slots")
+        if route:
+            print(f"Route path: {route.get('path')}")
+            print(f"Parameters: {route.get('parameters', [])}")
+
+    - name: Multi-network link generation
+      description: Generate links across multiple networks
+      query: |
+        from ethpandaops import lab
+
+        networks = ["mainnet", "sepolia", "holesky", "hoodi"]
+        slot = 1000000
+
+        print(f"Slot {slot} across networks:")
+        for network in networks:
+            try:
+                link = lab.link_slot(network, slot)
+                print(f"  {network}: {link}")
+            except ValueError as e:
+                print(f"  {network}: Not available ({e})")
+
+lab_combined_workflows:
+  name: Combined Workflows
+  description: Combine Lab with other data sources for comprehensive analysis
+  examples:
+    - name: Network analysis with Lab links
+      description: Combine Lab with ClickHouse data
+      query: |
+        from ethpandaops import lab, clickhouse
+
+        network = "holesky"
+
+        # Get recent blocks from ClickHouse
+        df = clickhouse.query("xatu", f'''
+            SELECT
+                slot,
+                block_root,
+                proposer_index
+            FROM beacon_api_eth_v1_events_block
+            WHERE meta_network_name = '{network}'
+            ORDER BY slot DESC
+            LIMIT 5
+        ''')
+
+        print(f"Recent blocks on {network}:")
+        for _, row in df.iterrows():
+            link = lab.link_slot(network, row['slot'])
+            print(f"  Slot {row['slot']}: proposer {row['proposer_index']}")
+            print(f"    View: {link}")
+
+    - name: Cross-explorer comparison
+      description: Compare Lab and Dora links for the same entity
+      query: |
+        from ethpandaops import lab, dora
+
+        network = "holesky"
+        slot = 1000000
+
+        # Get links from both explorers
+        lab_link = lab.link_slot(network, slot)
+        dora_link = dora.link_slot(network, str(slot))
+
+        print(f"Slot {slot} explorer links:")
+        print(f"  Lab:   {lab_link}")
+        print(f"  Dora:  {dora_link}")

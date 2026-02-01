@@ -5,12 +5,14 @@ This library provides direct access to Ethereum network data:
 - Prometheus: Infrastructure metrics
 - Loki: Log data
 - Storage: S3-compatible file storage for outputs
+- Lab: Ethereum explorer deep links using routes.json
+- Dora: Beacon chain explorer access
 
 Use list_datasources() on each module to discover available datasources or
 check the datasources://list MCP resource.
 
 Example usage:
-    from ethpandaops import clickhouse, prometheus, loki, storage
+    from ethpandaops import clickhouse, prometheus, loki, storage, lab, dora
 
     # List available ClickHouse clusters
     clusters = clickhouse.list_datasources()
@@ -22,6 +24,9 @@ Example usage:
     # Query Prometheus using instance name
     result = prometheus.query("ethpandaops", "up")
 
+    # Generate Lab deep links
+    link = lab.link_slot("mainnet", 1000000)
+
     # Upload output file
     url = storage.upload("/workspace/chart.png")
 """
@@ -29,14 +34,14 @@ Example usage:
 from . import storage
 
 # Plugin modules are assembled at Docker build time
-# and can be imported as: from ethpandaops import clickhouse, prometheus, loki
+# and can be imported as: from ethpandaops import clickhouse, prometheus, loki, dora, lab
 __all__ = ["storage"]
 __version__ = "0.1.0"
 
 
 def __getattr__(name):
-    """Lazy import for plugin modules (clickhouse, prometheus, loki, dora)."""
-    if name in ("clickhouse", "prometheus", "loki", "dora"):
+    """Lazy import for plugin modules (clickhouse, prometheus, loki, dora, lab)."""
+    if name in ("clickhouse", "prometheus", "loki", "dora", "lab"):
         import importlib
 
         mod = importlib.import_module(f".{name}", __name__)
