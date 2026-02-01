@@ -1,0 +1,133 @@
+spamoor_spammer_control:
+  name: Spammer Control
+  description: List, start, and stop Spamoor transaction spammers
+  examples:
+    - name: List all spammers
+      description: Get a list of all configured spammer instances
+      query: |
+        from ethpandaops import spamoor
+
+        # List all spammer instances
+        base_url = "http://localhost:8080"
+        instances = spamoor.list_instances(base_url)
+        
+        for inst in instances:
+            status = "running" if inst['status'] == 1 else "stopped"
+            print(f"ID {inst['id']}: {inst['name']} ({inst['scenario']}) - {status}")
+
+    - name: Start/stop a spammer
+      description: Control spammer state programmatically
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        
+        # Start a spammer
+        result = spamoor.start_instance(base_url, 1)
+        print(f"Start result: {result}")
+        
+        # Get updated status
+        instance = spamoor.get_instance(base_url, 1)
+        print(f"Status: {instance['status']}")
+        
+        # Stop the spammer
+        result = spamoor.stop_instance(base_url, 1)
+        print(f"Stop result: {result}")
+
+spamoor_monitoring:
+  name: Monitoring
+  description: Monitor spammer metrics and performance
+  examples:
+    - name: Get metrics dashboard
+      description: Get comprehensive metrics for all spammers
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        metrics = spamoor.get_metrics(base_url)
+        
+        print("=== Spammer Metrics ===")
+        for s in metrics['spammers']:
+            print(f"{s['name']}: {s['confirmed']} confirmed, {s['pending']} pending")
+        
+        totals = metrics['totals']
+        print(f"\nTotals: {totals['confirmed']} confirmed, {totals['pending']} pending")
+
+    - name: Check wallet balances
+      description: Monitor wallet information
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        wallets = spamoor.get_wallets(base_url)
+        
+        for wallet in wallets:
+            print(f"Wallet {wallet['name']}: {wallet['balance']} wei")
+
+    - name: View pending transactions
+      description: Get pending transactions across all wallets
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        pending = spamoor.get_pending_txs(base_url)
+        
+        print(f"Total pending: {len(pending)}")
+        for tx in pending[:5]:  # Show first 5
+            print(f"  {tx['hash'][:20]}... - {tx['value_formatted']}")
+
+spamoor_rpc_clients:
+  name: RPC Client Management
+  description: View and manage RPC client connections
+  examples:
+    - name: List all clients
+      description: Get information about all RPC clients
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        clients = spamoor.get_clients(base_url)
+        
+        for client in clients:
+            status = "ready" if client['ready'] else "not ready"
+            print(f"{client['name']}: {status} @ block {client['block_height']}")
+
+spamoor_deep_links:
+  name: Deep Links
+  description: Generate Spamoor web UI links
+  examples:
+    - name: Generate various explorer links
+      description: Create deep links to Spamoor web UI
+      query: |
+        from ethpandaops import spamoor
+
+        base_url = "http://localhost:8080"
+        
+        # Dashboard link
+        print(f"Dashboard: {spamoor.link_dashboard(base_url)}")
+        
+        # Specific spammer link
+        print(f"Spammer 1: {spamoor.link_instance(base_url, 1)}")
+        
+        # Wallets page
+        print(f"Wallets: {spamoor.link_wallets(base_url)}")
+
+spamoor_workflows:
+  name: Workflows
+  description: Combine Spamoor with other data sources
+  examples:
+    - name: Monitor network with spamoor + prometheus
+      description: Check if spamoor transactions are being included
+      query: |
+        from ethpandaops import spamoor, prometheus
+
+        # Get spamoor metrics
+        base_url = "http://localhost:8080"
+        metrics = spamoor.get_metrics(base_url)
+        
+        print(f"Spamoor submitted: {metrics['totals']['submitted']}")
+        print(f"Spamoor confirmed: {metrics['totals']['confirmed']}")
+        
+        # Check block rate from prometheus
+        block_rate = prometheus.query("ethpandaops", "rate(ethereum_blockchain_blocks_total[5m])")
+        print(f"Block rate: {block_rate}")
