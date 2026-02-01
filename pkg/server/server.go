@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/observability"
+	"github.com/ethpandaops/mcp/pkg/plugin"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 	"github.com/ethpandaops/mcp/pkg/tool"
@@ -29,6 +31,20 @@ const (
 	TransportSSE            = "sse"
 	TransportStreamableHTTP = "streamable-http"
 )
+
+// HealthResponse represents the overall health status of the server.
+type HealthResponse struct {
+	Status    string    `json:"status"`
+	Version   string    `json:"version"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// PluginsHealthResponse represents the health status of all plugins.
+type PluginsHealthResponse struct {
+	Status  string                           `json:"status"`
+	Plugins map[string]plugin.HealthCheckResult `json:"plugins"`
+	Timestamp time.Time                        `json:"timestamp"`
+}
 
 // Service is the main MCP server service.
 type Service interface {
@@ -45,6 +61,7 @@ type service struct {
 	authCfg              config.AuthConfig
 	toolRegistry         tool.Registry
 	resourceRegistry     resource.Registry
+	pluginRegistry       *plugin.Registry
 	sandbox              sandbox.Service
 	auth                 auth.SimpleService
 	mcpServer            *mcpserver.MCPServer
@@ -63,6 +80,7 @@ func NewService(
 	authCfg config.AuthConfig,
 	toolRegistry tool.Registry,
 	resourceRegistry resource.Registry,
+	pluginRegistry *plugin.Registry,
 	sandboxSvc sandbox.Service,
 	authSvc auth.SimpleService,
 ) Service {
@@ -72,6 +90,7 @@ func NewService(
 		authCfg:          authCfg,
 		toolRegistry:     toolRegistry,
 		resourceRegistry: resourceRegistry,
+		pluginRegistry:   pluginRegistry,
 		sandbox:          sandboxSvc,
 		auth:             authSvc,
 		done:             make(chan struct{}),
@@ -401,14 +420,7 @@ func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 	}
 
 	// Health endpoints.
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
-	})
+	s.mountHealthRoutes(r)
 
 	// Mount MCP handler.
 	r.Handle("/sse", mcpHandler)
@@ -434,20 +446,118 @@ func (s *service) buildStreamableHTTPHandler(mcpHandler http.Handler) http.Handl
 	}
 
 	// Health endpoints.
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
-	})
+	s.mountHealthRoutes(r)
 
 	// Mount Streamable HTTP MCP handler on /mcp (the standard endpoint).
 	r.Handle("/mcp", mcpHandler)
 	r.Handle("/mcp/*", mcpHandler)
 
 	return r
+}
+
+// mountHealthRoutes mounts all health check endpoints.
+func (s *service) mountHealthRoutes(r chi.Router) {
+	// /health - Overall server health
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		response := HealthResponse{
+			Status:    "healthy",
+			Version:   version.Version,
+			Timestamp: time.Now().UTC(),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	})
+
+	// /health/ready - Readiness probe (server initialized and running)
+	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		running := s.running
+		s.mu.Unlock()
+
+		if !running {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status": "not ready",
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status": "ready",
+		})
+	})
+
+	// /health/live - Liveness probe (server is running)
+	r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		running := s.running
+		s.mu.Unlock()
+
+		if !running {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status": "not alive",
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status": "alive",
+		})
+	})
+
+	// /health/plugins - Per-plugin health status
+	r.Get("/health/plugins", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		pluginResults := make(map[string]plugin.HealthCheckResult)
+		overallStatus := "healthy"
+
+		if s.pluginRegistry != nil {
+			pluginResults = s.pluginRegistry.HealthChecks(ctx)
+
+			// Determine overall status based on plugin health
+			for _, result := range pluginResults {
+				if result.Status == plugin.HealthStatusUnhealthy {
+					overallStatus = "degraded"
+					break
+				}
+			}
+		}
+
+		response := PluginsHealthResponse{
+			Status:    overallStatus,
+			Plugins:   pluginResults,
+			Timestamp: time.Now().UTC(),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	})
+
+	// Legacy endpoints for backward compatibility
+	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		s.mu.Lock()
+		running := s.running
+		s.mu.Unlock()
+
+		if running {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ready"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready"))
+		}
+	})
 }
 
 // Compile-time interface compliance check.

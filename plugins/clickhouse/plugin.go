@@ -275,3 +275,38 @@ func (p *Plugin) Stop(_ context.Context) error {
 	}
 	return nil
 }
+
+// HealthCheck performs a health check on the ClickHouse plugin.
+func (p *Plugin) HealthCheck(ctx context.Context) plugin.HealthCheckResult {
+	checkedAt := time.Now()
+
+	// If no clusters are configured, consider it healthy but with a message
+	if len(p.cfg.Clusters) == 0 {
+		return plugin.HealthCheckResult{
+			Status:    plugin.HealthStatusHealthy,
+			Message:   "No clusters configured",
+			CheckedAt: checkedAt,
+		}
+	}
+
+	// If schema client is running, check if it's healthy
+	if p.schemaClient != nil {
+		// Try to perform a simple health check via the proxy service
+		if p.proxySvc != nil {
+			datasources := p.proxySvc.ClickHouseDatasources()
+			if len(datasources) == 0 {
+				return plugin.HealthCheckResult{
+					Status:    plugin.HealthStatusUnhealthy,
+					Message:   "No ClickHouse datasources available via proxy",
+					CheckedAt: checkedAt,
+				}
+			}
+		}
+	}
+
+	return plugin.HealthCheckResult{
+		Status:    plugin.HealthStatusHealthy,
+		Message:   fmt.Sprintf("%d cluster(s) configured", len(p.cfg.Clusters)),
+		CheckedAt: checkedAt,
+	}
+}

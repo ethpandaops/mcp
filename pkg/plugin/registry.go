@@ -252,3 +252,19 @@ func (r *Registry) GettingStartedSnippets() string {
 
 	return snippets
 }
+
+// HealthChecks performs health checks on all initialized plugins.
+// Returns a map of plugin name to health check result.
+func (r *Registry) HealthChecks(ctx context.Context) map[string]HealthCheckResult {
+	r.mu.RLock()
+	plugins := make([]Plugin, len(r.initialized))
+	copy(plugins, r.initialized)
+	r.mu.RUnlock()
+
+	results := make(map[string]HealthCheckResult, len(plugins))
+	for _, p := range plugins {
+		results[p.Name()] = p.HealthCheck(ctx)
+	}
+
+	return results
+}

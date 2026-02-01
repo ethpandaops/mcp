@@ -5,11 +5,31 @@ package plugin
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/mcp/pkg/types"
 )
+
+// HealthStatus represents the health status of a plugin.
+type HealthStatus string
+
+const (
+	// HealthStatusHealthy indicates the plugin is healthy.
+	HealthStatusHealthy HealthStatus = "healthy"
+	// HealthStatusUnhealthy indicates the plugin is unhealthy.
+	HealthStatusUnhealthy HealthStatus = "unhealthy"
+	// HealthStatusUnknown indicates the plugin health is unknown.
+	HealthStatusUnknown HealthStatus = "unknown"
+)
+
+// HealthCheckResult contains the result of a health check.
+type HealthCheckResult struct {
+	Status    HealthStatus `json:"status"`
+	Message   string       `json:"message,omitempty"`
+	CheckedAt time.Time    `json:"checked_at"`
+}
 
 // ErrNoValidConfig indicates that a plugin was configured but has no valid
 // entries (e.g., all clusters/instances have empty required fields).
@@ -93,4 +113,8 @@ type Plugin interface {
 
 	// Stop cleans up resources.
 	Stop(ctx context.Context) error
+
+	// HealthCheck performs a health check on the plugin and returns its status.
+	// This is used by the /health/plugins endpoint to report per-plugin health.
+	HealthCheck(ctx context.Context) HealthCheckResult
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -190,3 +191,23 @@ func (p *Plugin) GettingStartedSnippet() string                                 
 func (p *Plugin) RegisterResources(_ logrus.FieldLogger, _ plugin.ResourceRegistry) error { return nil }
 func (p *Plugin) Start(_ context.Context) error                                           { return nil }
 func (p *Plugin) Stop(_ context.Context) error                                            { return nil }
+
+// HealthCheck performs a health check on the Loki plugin.
+func (p *Plugin) HealthCheck(_ context.Context) plugin.HealthCheckResult {
+	checkedAt := time.Now()
+
+	// If no instances are configured, consider it healthy but with a message
+	if len(p.cfg.Instances) == 0 {
+		return plugin.HealthCheckResult{
+			Status:    plugin.HealthStatusHealthy,
+			Message:   "No instances configured",
+			CheckedAt: checkedAt,
+		}
+	}
+
+	return plugin.HealthCheckResult{
+		Status:    plugin.HealthStatusHealthy,
+		Message:   fmt.Sprintf("%d instance(s) configured", len(p.cfg.Instances)),
+		CheckedAt: checkedAt,
+	}
+}

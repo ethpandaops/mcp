@@ -188,6 +188,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		b.cfg.Auth,
 		toolReg,
 		resourceReg,
+		pluginReg,
 		sandboxSvc,
 		authSvc,
 	), nil
