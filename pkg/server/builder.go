@@ -22,6 +22,7 @@ import (
 	doraplugin "github.com/ethpandaops/mcp/plugins/dora"
 	lokiplugin "github.com/ethpandaops/mcp/plugins/loki"
 	prometheusplugin "github.com/ethpandaops/mcp/plugins/prometheus"
+	spamoorplugin "github.com/ethpandaops/mcp/plugins/spamoor"
 )
 
 // Dependencies contains all the services required to run the MCP server.
@@ -203,6 +204,7 @@ func (b *Builder) buildPluginRegistry() (*plugin.Registry, error) {
 	reg.Add(doraplugin.New())
 	reg.Add(lokiplugin.New())
 	reg.Add(prometheusplugin.New())
+	reg.Add(spamoorplugin.New())
 
 	// Initialize plugins that have config or are default-enabled.
 	for _, name := range reg.All() {
