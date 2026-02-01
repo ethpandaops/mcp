@@ -17,6 +17,7 @@ import (
 	"github.com/ethpandaops/mcp/internal/version"
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
+	"github.com/ethpandaops/mcp/pkg/middleware"
 	"github.com/ethpandaops/mcp/pkg/observability"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
@@ -47,6 +48,7 @@ type service struct {
 	resourceRegistry     resource.Registry
 	sandbox              sandbox.Service
 	auth                 auth.SimpleService
+	rateLimiter          *middleware.RateLimiter
 	mcpServer            *mcpserver.MCPServer
 	sseServer            *mcpserver.SSEServer
 	streamableHTTPServer *mcpserver.StreamableHTTPServer
@@ -65,6 +67,7 @@ func NewService(
 	resourceRegistry resource.Registry,
 	sandboxSvc sandbox.Service,
 	authSvc auth.SimpleService,
+	rateLimiter *middleware.RateLimiter,
 ) Service {
 	return &service{
 		log:              log.WithField("component", "server"),
@@ -74,6 +77,7 @@ func NewService(
 		resourceRegistry: resourceRegistry,
 		sandbox:          sandboxSvc,
 		auth:             authSvc,
+		rateLimiter:      rateLimiter,
 		done:             make(chan struct{}),
 	}
 }
@@ -172,6 +176,13 @@ func (s *service) Stop() error {
 	if s.sandbox != nil {
 		if err := s.sandbox.Stop(shutdownCtx); err != nil {
 			s.log.WithError(err).Error("Failed to stop sandbox service")
+		}
+	}
+
+	// Stop the rate limiter.
+	if s.rateLimiter != nil {
+		if err := s.rateLimiter.Close(); err != nil {
+			s.log.WithError(err).Error("Failed to stop rate limiter")
 		}
 	}
 
@@ -395,6 +406,11 @@ func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 		r.Use(s.auth.Middleware())
 	}
 
+	// Apply rate limiting middleware if enabled.
+	if s.rateLimiter != nil {
+		r.Use(s.rateLimiter.Middleware(""))
+	}
+
 	// Mount auth routes (discovery endpoints, OAuth flow).
 	if s.auth != nil {
 		s.auth.MountRoutes(r)
@@ -426,6 +442,11 @@ func (s *service) buildStreamableHTTPHandler(mcpHandler http.Handler) http.Handl
 	// Apply auth middleware if enabled.
 	if s.auth != nil && s.auth.Enabled() {
 		r.Use(s.auth.Middleware())
+	}
+
+	// Apply rate limiting middleware if enabled.
+	if s.rateLimiter != nil {
+		r.Use(s.rateLimiter.Middleware(""))
 	}
 
 	// Mount auth routes (discovery endpoints, OAuth flow).

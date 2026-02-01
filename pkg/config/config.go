@@ -22,6 +22,7 @@ type Config struct {
 	Storage        *StorageConfig       `yaml:"storage,omitempty"`
 	Observability  ObservabilityConfig  `yaml:"observability"`
 	SemanticSearch SemanticSearchConfig `yaml:"semantic_search"`
+	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -123,6 +124,85 @@ type StorageConfig struct {
 type ObservabilityConfig struct {
 	MetricsEnabled bool `yaml:"metrics_enabled"`
 	MetricsPort    int  `yaml:"metrics_port"`
+}
+
+// RateLimitConfig holds rate limiting configuration.
+type RateLimitConfig struct {
+	// Enabled controls whether rate limiting is active.
+	Enabled bool `yaml:"enabled"`
+	// Backend is the rate limiting backend: "memory" (default) or "redis".
+	Backend string `yaml:"backend"`
+	// Redis configuration (only used when backend is "redis").
+	Redis *RateLimitRedisConfig `yaml:"redis,omitempty"`
+	// Default limits applied to all tools/endpoints.
+	Default RateLimitRule `yaml:"default"`
+	// PerTool allows configuring different limits for specific tools.
+	// Keys are tool names (e.g., "execute_python", "search_examples").
+	PerTool map[string]RateLimitRule `yaml:"per_tool,omitempty"`
+	// TrustedProxies is a list of IP addresses or CIDR ranges of trusted reverse proxies.
+	// Used to determine the client IP from X-Forwarded-For headers.
+	TrustedProxies []string `yaml:"trusted_proxies,omitempty"`
+}
+
+// RateLimitRule defines rate limit parameters for a tool or default.
+type RateLimitRule struct {
+	// RequestsPerSecond is the sustained rate limit (token bucket fill rate).
+	RequestsPerSecond float64 `yaml:"requests_per_second"`
+	// RequestsPerMinute is an alternative to RequestsPerSecond (will be converted).
+	// If both are set, RequestsPerSecond takes precedence.
+	RequestsPerMinute int `yaml:"requests_per_minute"`
+	// BurstSize is the maximum burst size (bucket capacity).
+	// Defaults to RequestsPerSecond if not set.
+	BurstSize int `yaml:"burst_size"`
+	// BlockDuration is how long to block requests after rate limit is exceeded.
+	// Defaults to 60 seconds.
+	BlockDuration time.Duration `yaml:"block_duration"`
+}
+
+// RateLimitRedisConfig holds Redis backend configuration for distributed rate limiting.
+type RateLimitRedisConfig struct {
+	// Address is the Redis server address (host:port).
+	Address string `yaml:"address"`
+	// Password for Redis authentication.
+	Password string `yaml:"password"`
+	// Database is the Redis database number.
+	Database int `yaml:"database"`
+	// KeyPrefix is the prefix for all rate limit keys in Redis.
+	KeyPrefix string `yaml:"key_prefix"`
+	// TLS enables TLS connection to Redis.
+	TLS bool `yaml:"tls"`
+}
+
+// GetRequestsPerSecond returns the effective requests per second rate.
+func (r RateLimitRule) GetRequestsPerSecond() float64 {
+	if r.RequestsPerSecond > 0 {
+		return r.RequestsPerSecond
+	}
+	if r.RequestsPerMinute > 0 {
+		return float64(r.RequestsPerMinute) / 60.0
+	}
+	return 1.0 // Default: 1 request per second
+}
+
+// GetBurstSize returns the effective burst size.
+func (r RateLimitRule) GetBurstSize() int {
+	if r.BurstSize > 0 {
+		return r.BurstSize
+	}
+	// Default burst is the ceiling of requests per second
+	burst := int(r.GetRequestsPerSecond())
+	if burst < 1 {
+		return 1
+	}
+	return burst
+}
+
+// GetBlockDuration returns the effective block duration.
+func (r RateLimitRule) GetBlockDuration() time.Duration {
+	if r.BlockDuration > 0 {
+		return r.BlockDuration
+	}
+	return 60 * time.Second
 }
 
 // ProxyConfig holds proxy connection configuration.
@@ -279,6 +359,17 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Observability.MetricsPort == 0 {
 		cfg.Observability.MetricsPort = 2490
+	}
+
+	// Rate limit defaults.
+	if cfg.RateLimit.Backend == "" {
+		cfg.RateLimit.Backend = "memory"
+	}
+	if cfg.RateLimit.Default.RequestsPerSecond == 0 && cfg.RateLimit.Default.RequestsPerMinute == 0 {
+		cfg.RateLimit.Default.RequestsPerSecond = 10 // Default: 10 req/s
+	}
+	if cfg.RateLimit.Default.BurstSize == 0 {
+		cfg.RateLimit.Default.BurstSize = 20 // Default: burst of 20
 	}
 
 	// Proxy defaults.
