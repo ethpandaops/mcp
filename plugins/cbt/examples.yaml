@@ -1,0 +1,47 @@
+# CBT (ClickHouse Build Tool) Query Examples
+#
+# Format:
+#
+# category_key:
+#   name: Category Name
+#   description: Description of this category
+#   examples:
+#     - name: Example Name
+#       description: What this query does
+#       query: |
+#         Some query or command
+
+cbt_basics:
+  name: CBT Model Management
+  description: Common operations for managing and monitoring CBT models
+  examples:
+    - name: List all models
+      description: Get a list of all available CBT models
+      query: |
+        # Use cbt.list_models() to get all models
+        models = cbt.list_models()
+        for model in models:
+            print(f"{model['database']}.{model['table']} ({model['type']})")
+
+    - name: Get model details
+      description: Get detailed information about a specific model
+      query: |
+        # Use cbt.get_model() to get model details
+        model = cbt.get_model("analytics", "block_propagation")
+        print(f"Type: {model['type']}")
+        print(f"Dependencies: {model.get('dependencies', [])}")
+
+    - name: Check transformation status
+      description: Query the status of a transformation model
+      query: |
+        # Use cbt.get_transformation_status() to get processing status
+        status = cbt.get_transformation_status("analytics", "block_propagation")
+        print(f"Processed up to: {status.get('max_position', 'N/A')}")
+        print(f"Total intervals: {status.get('total_intervals', 0)}")
+
+    - name: Open CBT UI for a model
+      description: Get deep link to CBT UI for a specific model
+      query: |
+        # Use cbt.get_model_ui_url() to get the UI link
+        url = cbt.get_model_ui_url("analytics", "block_propagation")
+        print(f"Open UI: {url}")

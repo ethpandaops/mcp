@@ -19,6 +19,7 @@ import (
 	"github.com/ethpandaops/mcp/runbooks"
 
 	clickhouseplugin "github.com/ethpandaops/mcp/plugins/clickhouse"
+	cbtplugin "github.com/ethpandaops/mcp/plugins/cbt"
 	doraplugin "github.com/ethpandaops/mcp/plugins/dora"
 	lokiplugin "github.com/ethpandaops/mcp/plugins/loki"
 	prometheusplugin "github.com/ethpandaops/mcp/plugins/prometheus"
@@ -200,6 +201,7 @@ func (b *Builder) buildPluginRegistry() (*plugin.Registry, error) {
 
 	// Register all compiled-in plugins.
 	reg.Add(clickhouseplugin.New())
+	reg.Add(cbtplugin.New())
 	reg.Add(doraplugin.New())
 	reg.Add(lokiplugin.New())
 	reg.Add(prometheusplugin.New())
