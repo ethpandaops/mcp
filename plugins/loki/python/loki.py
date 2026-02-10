@@ -175,7 +175,16 @@ def _query_api(
 
     with _get_client(instance_name) as client:
         response = client.get(f"/loki{path}", params=params)
-        response.raise_for_status()
+
+        if not response.is_success:
+            try:
+                data = response.json()
+                error_detail = data.get("error", response.text)
+            except Exception:
+                error_detail = response.text
+            raise ValueError(
+                f"Loki query failed (HTTP {response.status_code}): {error_detail}"
+            )
 
         data = response.json()
 
@@ -199,7 +208,16 @@ def _query_labels_api(
 
     with _get_client(instance_name) as client:
         response = client.get(f"/loki{path}", params=params)
-        response.raise_for_status()
+
+        if not response.is_success:
+            try:
+                data = response.json()
+                error_detail = data.get("error", response.text)
+            except Exception:
+                error_detail = response.text
+            raise ValueError(
+                f"Loki labels query failed (HTTP {response.status_code}): {error_detail}"
+            )
 
         data = response.json()
 

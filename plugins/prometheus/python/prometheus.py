@@ -150,7 +150,16 @@ def _query_api(instance_name: str, path: str, params: dict[str, str]) -> dict[st
 
     with _get_client(instance_name) as client:
         response = client.get(f"/prometheus{path}", params=params)
-        response.raise_for_status()
+
+        if not response.is_success:
+            try:
+                data = response.json()
+                error_detail = data.get("error", response.text)
+            except Exception:
+                error_detail = response.text
+            raise ValueError(
+                f"Prometheus query failed (HTTP {response.status_code}): {error_detail}"
+            )
 
         data = response.json()
 

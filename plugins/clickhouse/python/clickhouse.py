@@ -148,7 +148,11 @@ def query(
                 content=sql,
                 params=params,
             )
-            response.raise_for_status()
+
+            if not response.is_success:
+                error_text = response.text.strip()
+                suggestion = _get_error_suggestion(error_text)
+                raise ClickHouseError(error_text, suggestion)
 
             # Parse TSV response into DataFrame.
             if response.text.strip():
@@ -156,6 +160,8 @@ def query(
 
             return pd.DataFrame()
 
+    except ClickHouseError:
+        raise
     except Exception as e:
         error_msg = str(e)
         suggestion = _get_error_suggestion(error_msg)
