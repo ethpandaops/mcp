@@ -1,0 +1,174 @@
+syncoor_test_monitoring:
+  name: Sync Test Monitoring
+  description: Monitor Ethereum client synchronization tests using Syncoor
+  examples:
+    - name: List sync tests
+      description: Get all sync tests for a network
+      query: |
+        from ethpandaops import syncoor
+
+        # List available networks with Syncoor
+        networks = syncoor.list_networks()
+        print(f"Available networks: {[n['name'] for n in networks]}")
+
+        # List all tests for a network
+        network = "mainnet"
+        tests = syncoor.list_tests(network)
+        print(f"Found {len(tests)} tests for {network}")
+
+        # Show active tests only
+        active_tests = syncoor.list_tests(network, active_only=True)
+        print(f"Active tests: {len(active_tests)}")
+
+    - name: Get test details
+      description: Get detailed information about a specific sync test
+      query: |
+        from ethpandaops import syncoor
+
+        # List tests to find a run_id
+        tests = syncoor.list_tests("mainnet", active_only=True)
+        if tests:
+            run_id = tests[0]['run_id']
+            
+            # Get detailed test information
+            test = syncoor.get_test("mainnet", run_id)
+            print(f"Test {run_id}:")
+            print(f"  Status: {'Running' if test['is_running'] else 'Complete'}")
+            print(f"  Execution client: {test['el_client']}")
+            print(f"  Consensus client: {test['cl_client']}")
+            print(f"  Start time: {test['start_time']}")
+
+    - name: Monitor test progress
+      description: Get sync progress and current metrics for a test
+      query: |
+        from ethpandaops import syncoor
+
+        # Get active tests
+        tests = syncoor.list_tests("mainnet", active_only=True)
+        if tests:
+            run_id = tests[0]['run_id']
+            
+            # Get test progress
+            progress = syncoor.get_test_progress("mainnet", run_id)
+            
+            if progress:
+                print(f"Sync Progress for {run_id}:")
+                print(f"  Block: {progress.get('current_block', 'N/A')}")
+                print(f"  Slot: {progress.get('current_slot', 'N/A')}")
+                print(f"  EL Sync: {progress.get('exec_sync_percent', 0):.2f}%")
+                print(f"  CL Sync: {progress.get('cons_sync_percent', 0):.2f}%")
+                print(f"  EL Peers: {progress.get('exec_peers', 0)}")
+                print(f"  CL Peers: {progress.get('cons_peers', 0)}")
+
+syncoor_client_statistics:
+  name: Client Statistics
+  description: Get client sync statistics and resource usage
+  examples:
+    - name: Get client resource usage
+      description: Get resource usage statistics for execution and consensus clients
+      query: |
+        from ethpandaops import syncoor
+
+        tests = syncoor.list_tests("mainnet", active_only=True)
+        if tests:
+            run_id = tests[0]['run_id']
+            
+            # Get client statistics
+            stats = syncoor.get_client_statistics("mainnet", run_id)
+            
+            print(f"Client Statistics for {run_id}:")
+            
+            # Execution client metrics
+            if 'exec' in stats:
+                exec = stats['exec']
+                print(f"  Execution Client ({exec.get('type', 'N/A')}):")
+                print(f"    Disk usage: {exec.get('disk_usage_gb', 0):.2f} GB")
+                print(f"    Memory usage: {exec.get('memory_usage_mb', 0):.2f} MB")
+                print(f"    CPU usage: {exec.get('cpu_percent', 0):.1f}%")
+            
+            # Consensus client metrics
+            if 'cons' in stats:
+                cons = stats['cons']
+                print(f"  Consensus Client ({cons.get('type', 'N/A')}):")
+                print(f"    Disk usage: {cons.get('disk_usage_gb', 0):.2f} GB")
+                print(f"    Memory usage: {cons.get('memory_usage_mb', 0):.2f} MB")
+                print(f"    CPU usage: {cons.get('cpu_percent', 0):.1f}%")
+
+    - name: Compare client combinations
+      description: Compare sync performance across different client combinations
+      query: |
+        from ethpandaops import syncoor
+
+        # Get all completed tests
+        tests = syncoor.list_tests("mainnet")
+        completed = [t for t in tests if t.get('is_complete')]
+        
+        # Group by client combination
+        by_combo = {}
+        for test in completed:
+            combo = f"{test['el_client']}/{test['cl_client']}"
+            if combo not in by_combo:
+                by_combo[combo] = []
+            by_combo[combo].append(test)
+        
+        print("Client Combination Performance:")
+        for combo, tests in sorted(by_combo.items()):
+            durations = [t.get('duration_seconds', 0) for t in tests if t.get('duration_seconds')]
+            if durations:
+                avg_duration = sum(durations) / len(durations)
+                print(f"  {combo}: avg {avg_duration/60:.1f} min ({len(tests)} tests)")
+
+syncoor_deep_links:
+  name: Deep Links
+  description: Generate Syncoor web UI links for tests
+  examples:
+    - name: Generate test links
+      description: Create deep links to view tests in Syncoor web UI
+      query: |
+        from ethpandaops import syncoor
+
+        # List tests and generate links
+        tests = syncoor.list_tests("mainnet", active_only=True)
+        
+        for test in tests[:5]:
+            run_id = test['run_id']
+            link = syncoor.link_test("mainnet", run_id)
+            print(f"Test {run_id}: {link}")
+
+        # Link to tests list page
+        list_link = syncoor.link_tests_list("mainnet")
+        print(f"\nAll tests: {list_link}")
+
+syncoor_combined_workflows:
+  name: Combined Workflows
+  description: Combine Syncoor with other data sources for comprehensive analysis
+  examples:
+    - name: Monitor active sync tests
+      description: Monitor active sync tests with network context
+      query: |
+        from ethpandaops import syncoor, dora
+
+        # Get network status from Dora
+        network = "mainnet"
+        overview = dora.get_network_overview(network)
+
+        print(f"=== {network.upper()} Network Status ===")
+        print(f"Current slot: {overview['current_slot']}")
+        print(f"Current epoch: {overview['current_epoch']}")
+
+        # Get active sync tests
+        tests = syncoor.list_tests(network, active_only=True)
+        print(f"\nActive Sync Tests: {len(tests)}")
+
+        for test in tests:
+            run_id = test['run_id']
+            el = test['el_client']
+            cl = test['cl_client']
+            
+            # Get progress
+            progress = syncoor.get_test_progress(network, run_id)
+            if progress:
+                el_sync = progress.get('exec_sync_percent', 0)
+                cl_sync = progress.get('cons_sync_percent', 0)
+                print(f"  {el}/{cl}: EL {el_sync:.1f}%, CL {cl_sync:.1f}%")
+                print(f"    Link: {syncoor.link_test(network, run_id)}")
