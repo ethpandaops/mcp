@@ -121,8 +121,16 @@ type StorageConfig struct {
 
 // ObservabilityConfig holds observability configuration.
 type ObservabilityConfig struct {
-	MetricsEnabled bool `yaml:"metrics_enabled"`
-	MetricsPort    int  `yaml:"metrics_port"`
+	MetricsEnabled bool          `yaml:"metrics_enabled"`
+	MetricsPort    int           `yaml:"metrics_port"`
+	Logging        LoggingConfig `yaml:"logging"`
+}
+
+// LoggingConfig holds logging configuration.
+type LoggingConfig struct {
+	Level      string `yaml:"level"`
+	Format     string `yaml:"format"`
+	OutputPath string `yaml:"output_path,omitempty"`
 }
 
 // ProxyConfig holds proxy connection configuration.
@@ -279,6 +287,14 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Observability.MetricsPort == 0 {
 		cfg.Observability.MetricsPort = 2490
+	}
+
+	// Logging defaults.
+	if cfg.Observability.Logging.Level == "" {
+		cfg.Observability.Logging.Level = "info"
+	}
+	if cfg.Observability.Logging.Format == "" {
+		cfg.Observability.Logging.Format = "text"
 	}
 
 	// Proxy defaults.

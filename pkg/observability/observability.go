@@ -21,6 +21,8 @@ type Service interface {
 	Start(ctx context.Context) error
 	// Stop gracefully shuts down the metrics server.
 	Stop() error
+	// ConfigureLogging configures the global logger based on config.
+	ConfigureLogging() (*logrus.Logger, error)
 }
 
 // service implements the Service interface.
@@ -125,6 +127,17 @@ func (s *service) readyHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	_, _ = w.Write([]byte(`{"status":"ready"}`))
+}
+
+// ConfigureLogging configures the global logger based on config.
+func (s *service) ConfigureLogging() (*logrus.Logger, error) {
+	loggerCfg := LoggerConfig{
+		Level:      LogLevel(s.cfg.Logging.Level),
+		Format:     LogFormat(s.cfg.Logging.Format),
+		OutputPath: s.cfg.Logging.OutputPath,
+	}
+
+	return ConfigureLogger(loggerCfg)
 }
 
 // Compile-time interface compliance check.

@@ -37,6 +37,9 @@ type ServerConfig struct {
 
 	// Audit holds audit logging configuration.
 	Audit AuditConfig `yaml:"audit"`
+
+	// Logging holds logging configuration.
+	Logging LoggingConfig `yaml:"logging"`
 }
 
 // HTTPServerConfig holds HTTP server configuration.
@@ -132,6 +135,18 @@ type AuditConfig struct {
 	MaxQueryLength int `yaml:"max_query_length,omitempty"`
 }
 
+// LoggingConfig holds logging configuration for the proxy.
+type LoggingConfig struct {
+	// Level is the log level (debug, info, warn, error).
+	Level string `yaml:"level"`
+
+	// Format is the log format (text or json).
+	Format string `yaml:"format"`
+
+	// OutputPath is the path to log file (empty = stdout).
+	OutputPath string `yaml:"output_path,omitempty"`
+}
+
 // ApplyDefaults sets default values for the server config.
 func (c *ServerConfig) ApplyDefaults() {
 	// Server defaults.
@@ -177,6 +192,14 @@ func (c *ServerConfig) ApplyDefaults() {
 	// Audit defaults.
 	if c.Audit.MaxQueryLength == 0 {
 		c.Audit.MaxQueryLength = 500
+	}
+
+	// Logging defaults.
+	if c.Logging.Level == "" {
+		c.Logging.Level = "info"
+	}
+	if c.Logging.Format == "" {
+		c.Logging.Format = "text"
 	}
 
 	// ClickHouse defaults.

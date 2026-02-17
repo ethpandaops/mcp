@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/mcp/pkg/observability"
 	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
@@ -192,8 +193,12 @@ func (s *server) buildMiddlewareChain() func(http.Handler) http.Handler {
 			h = s.rateLimiter.Middleware()(h)
 		}
 
-		// Authentication (outermost).
+		// Authentication.
 		h = s.authenticator.Middleware()(h)
+
+		// Request logging (outermost).
+		loggingMiddleware := observability.NewLoggingMiddleware(s.log.(*logrus.Logger))
+		h = loggingMiddleware.Middleware()(h)
 
 		return h
 	}
