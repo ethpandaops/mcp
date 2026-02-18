@@ -33,7 +33,7 @@ func runVersion(_ *cobra.Command, _ []string) {
 		data, _ := json.MarshalIndent(info, "", "  ")
 		fmt.Println(string(data))
 	} else {
-		fmt.Printf("mcp version %s (commit: %s, built: %s)\n",
+		fmt.Printf("ethpandaops-mcp version %s (commit: %s, built: %s)\n",
 			version.Version, version.GitCommit, version.BuildTime)
 	}
 }

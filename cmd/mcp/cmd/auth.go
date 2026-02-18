@@ -24,7 +24,7 @@ var authCmd = &cobra.Command{
 	Long:  `Authenticate with the ethpandaops credential proxy using OAuth PKCE.`,
 }
 
-var loginCmd = &cobra.Command{
+var authLoginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to the credential proxy",
 	Long: `Log in to the ethpandaops credential proxy using OAuth PKCE.
@@ -32,14 +32,14 @@ This opens a browser window for authentication and stores the tokens locally.`,
 	RunE: runLogin,
 }
 
-var logoutCmd = &cobra.Command{
+var authLogoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Log out from the credential proxy",
 	Long:  `Remove locally stored authentication tokens.`,
 	RunE:  runLogout,
 }
 
-var statusCmd = &cobra.Command{
+var authStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show authentication status",
 	Long:  `Show the current authentication status and token information.`,
@@ -48,15 +48,15 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(authCmd)
-	authCmd.AddCommand(loginCmd)
-	authCmd.AddCommand(logoutCmd)
-	authCmd.AddCommand(statusCmd)
+	authCmd.AddCommand(authLoginCmd)
+	authCmd.AddCommand(authLogoutCmd)
+	authCmd.AddCommand(authStatusCmd)
 
 	// Login flags.
-	loginCmd.Flags().StringVar(&authIssuerURL, "issuer", "", "OIDC issuer URL (required)")
-	loginCmd.Flags().StringVar(&authClientID, "client-id", "", "OAuth client ID (required)")
-	_ = loginCmd.MarkFlagRequired("issuer")
-	_ = loginCmd.MarkFlagRequired("client-id")
+	authLoginCmd.Flags().StringVar(&authIssuerURL, "issuer", "", "OIDC issuer URL (required)")
+	authLoginCmd.Flags().StringVar(&authClientID, "client-id", "", "OAuth client ID (required)")
+	_ = authLoginCmd.MarkFlagRequired("issuer")
+	_ = authLoginCmd.MarkFlagRequired("client-id")
 }
 
 func runLogin(_ *cobra.Command, _ []string) error {
@@ -121,7 +121,7 @@ func runStatus(_ *cobra.Command, _ []string) error {
 	if tokens == nil {
 		fmt.Println("Not authenticated.")
 		fmt.Println("\nTo log in, run:")
-		fmt.Println("  mcp auth login --issuer <URL> --client-id <ID>")
+		fmt.Println("  ethpandaops-mcp login")
 
 		return nil
 	}
@@ -139,7 +139,7 @@ func runStatus(_ *cobra.Command, _ []string) error {
 		fmt.Println("  Status: Expired")
 
 		if tokens.RefreshToken != "" {
-			fmt.Println("\n  A refresh token is available. Run 'mcp auth login' to re-authenticate.")
+			fmt.Println("\n  A refresh token is available. Run 'ethpandaops-mcp login' to re-authenticate.")
 		}
 	}
 

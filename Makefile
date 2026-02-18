@@ -30,10 +30,10 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the binary
-	go build -ldflags "$(LDFLAGS)" -o mcp ./cmd/mcp
+	go build -ldflags "$(LDFLAGS)" -o ethpandaops-mcp ./cmd/mcp
 
 build-linux: ## Build for Linux (amd64)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o mcp-linux-amd64 ./cmd/mcp
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ethpandaops-mcp-linux-amd64 ./cmd/mcp
 
 test: ## Run tests
 	go test -race -v ./...
@@ -60,7 +60,7 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 clean: ## Clean build artifacts
-	rm -f mcp mcp-linux-amd64
+	rm -f ethpandaops-mcp ethpandaops-mcp-linux-amd64
 	rm -f coverage.out coverage.html
 
 docker: ## Build Docker image
@@ -81,17 +81,17 @@ docker-sandbox: ## Build sandbox Docker image
 
 test-sandbox: build docker-sandbox ## Test sandbox execution (requires .env)
 	@if [ -f .env ]; then \
-		set -a && . .env && set +a && ./mcp test; \
+		set -a && . .env && set +a && ./ethpandaops-mcp test; \
 	else \
 		echo "Error: .env file not found. Copy .env.example and configure it."; \
 		exit 1; \
 	fi
 
 run: build download-models ## Run the server with stdio transport
-	./mcp serve
+	./ethpandaops-mcp serve
 
 run-sse: build ## Run the server with SSE transport
-	./mcp serve --transport sse --port 2480
+	./ethpandaops-mcp serve --transport sse --port 2480
 
 run-docker: docker ## Run with docker-compose
 	docker-compose up -d
@@ -103,7 +103,7 @@ logs: ## View docker-compose logs
 	docker-compose logs -f mcp-server
 
 install: build ## Install binary to GOBIN
-	cp mcp $(GOBIN)/mcp
+	cp ethpandaops-mcp $(GOBIN)/ethpandaops-mcp
 
 version: ## Show version info
 	@echo "Version:    $(VERSION)"

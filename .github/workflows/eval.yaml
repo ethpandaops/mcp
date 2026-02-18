@@ -67,7 +67,7 @@ jobs:
         run: uv sync
 
       - name: Build MCP server
-        run: go build -o mcp ./cmd/mcp
+        run: go build -o ethpandaops-mcp ./cmd/mcp
 
       - name: Create CI config
         run: |
@@ -110,7 +110,7 @@ jobs:
 
       - name: Start MCP server
         run: |
-          ./mcp serve --config config.ci.yaml &
+          ./ethpandaops-mcp serve --config config.ci.yaml &
           # Wait for server to be ready
           for i in {1..30}; do
             if curl -s http://localhost:2480/health > /dev/null 2>&1; then

@@ -188,7 +188,7 @@ func newExecutePythonHandler(
 		handlerLog.WithFields(requestFields).Info("Executing Python code")
 
 		// Build credential-free environment variables for the sandbox.
-		env, err := buildSandboxEnv(pluginReg, proxySvc)
+		env, err := BuildSandboxEnv(pluginReg, proxySvc)
 		if err != nil {
 			handlerLog.WithError(err).Error("Failed to build sandbox environment")
 
@@ -320,10 +320,10 @@ func formatSize(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// buildSandboxEnv creates credential-free environment variables for the sandbox.
+// BuildSandboxEnv creates credential-free environment variables for the sandbox.
 // The proxy URL and datasource info are included, but no credentials.
 // The token is added separately by the caller.
-func buildSandboxEnv(
+func BuildSandboxEnv(
 	pluginReg *plugin.Registry,
 	proxySvc proxy.Service,
 ) (map[string]string, error) {

@@ -418,9 +418,7 @@ func (c *proxyClient) EnsureAuthenticated(_ context.Context) error {
 	}
 
 	return fmt.Errorf(
-		"not authenticated to proxy. Run 'mcp auth login --issuer %s --client-id %s' first",
-		c.cfg.IssuerURL,
-		c.cfg.ClientID,
+		"not authenticated to proxy. Run 'ethpandaops-mcp login' first",
 	)
 }
 
