@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 	"gopkg.in/yaml.v3"
+
+	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 )
 
 // ServerConfig is the configuration for the proxy server.

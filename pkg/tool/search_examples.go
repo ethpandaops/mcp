@@ -97,7 +97,7 @@ func (h *searchExamplesHandler) handle(_ context.Context, request mcp.CallToolRe
 
 	categoryFilter := request.GetString("category", "")
 
-	limit := int(request.GetInt("limit", DefaultSearchLimit))
+	limit := request.GetInt("limit", DefaultSearchLimit)
 	if limit <= 0 {
 		limit = DefaultSearchLimit
 	}
