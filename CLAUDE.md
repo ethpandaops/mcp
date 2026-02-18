@@ -14,7 +14,7 @@ The server uses a **plugin architecture** where each datasource (ClickHouse, Pro
 
 ```bash
 # Build
-make build                    # Build binary
+make build                    # Build binary (produces ./ethpandaops-mcp)
 make docker                   # Build Docker image
 make docker-sandbox           # Build sandbox container image
 
@@ -27,11 +27,18 @@ make lint                     # Run golangci-lint
 make lint-fix                 # Run golangci-lint with auto-fix
 make fmt                      # Format code
 
-# Run
+# Run (MCP server mode)
 make run                      # Run with stdio transport
 make run-sse                  # Run with SSE transport on port 2480
-./mcp serve                   # Start server (default: stdio)
-./mcp serve -t sse -p 2480   # Start with SSE transport
+./ethpandaops-mcp serve                   # Start server (default: stdio)
+./ethpandaops-mcp serve -t sse -p 2480   # Start with SSE transport
+
+# CLI mode (no MCP server needed)
+./ethpandaops-mcp login                   # Authenticate with credential proxy
+./ethpandaops-mcp run --code 'print("hello")'  # Execute Python
+./ethpandaops-mcp search examples --query "block timing"  # Search examples
+./ethpandaops-mcp datasources             # List datasources
+./ethpandaops-mcp tables                  # List ClickHouse tables
 
 # Evaluation tests (in tests/eval/)
 cd tests/eval && uv sync      # Install Python dependencies
@@ -63,6 +70,7 @@ pkg/
 │   └── session.go   # Session management for persistent containers
 ├── auth/            # GitHub OAuth authentication
 ├── config/          # Configuration loading and validation
+├── defaults/        # Production default constants (proxy URL, client ID)
 ├── embedding/       # GGUF embedding model for semantic search
 └── observability/   # Prometheus metrics
 

@@ -14,7 +14,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "mcp",
+	Use:   "ethpandaops-mcp",
 	Short: "ethpandaops MCP server for Ethereum network analytics",
 	Long: `An MCP (Model Context Protocol) server that provides AI assistants with
 Ethereum network analytics capabilities including ClickHouse blockchain data,

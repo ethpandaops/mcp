@@ -34,8 +34,21 @@ Use when the MCP server runs locally but must reach production datasources.
 
 - Proxy runs in production with auth.mode: jwt.
 - MCP runs locally with proxy.url set to the production proxy and proxy.auth configured for OIDC.
-- Local MCP uses mcp auth login to obtain a JWT; that JWT is injected into sandbox executions.
+- Local MCP uses `ethpandaops-mcp login` to obtain a JWT; that JWT is injected into sandbox executions.
 - Sandboxes must be able to reach the production proxy over the network.
+
+### CLI-only variant (no MCP server)
+
+In this variant you skip running the MCP server entirely. Your coding agent invokes the `ethpandaops-mcp` binary via Bash:
+
+```bash
+ethpandaops-mcp login
+ethpandaops-mcp run --file /tmp/query.py
+ethpandaops-mcp search examples --query "block timing"
+ethpandaops-mcp datasources
+```
+
+The binary connects to the production proxy using baked-in defaults (overridable via `--proxy-url`, `--issuer`, `--client-id`). Docker must be running locally for sandbox containers. Install skills via `npx skills add ethpandaops/mcp` to give agents the CLI knowledge.
 
 ## Mode 3: Remote-agent mode (proxy + MCP + sandboxes in prod)
 

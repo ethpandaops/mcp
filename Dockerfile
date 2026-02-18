@@ -67,7 +67,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X github.com/ethpandaops/mcp/internal/version.Version=${VERSION} \
     -X github.com/ethpandaops/mcp/internal/version.GitCommit=${GIT_COMMIT} \
     -X github.com/ethpandaops/mcp/internal/version.BuildTime=${BUILD_TIME}" \
-    -o mcp ./cmd/mcp
+    -o ethpandaops-mcp ./cmd/mcp
 
 # Build proxy binary
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -109,7 +109,7 @@ RUN useradd -m -s /bin/bash mcp && \
 WORKDIR /app
 
 # Copy binaries from builder
-COPY --from=builder /app/mcp /app/mcp
+COPY --from=builder /app/ethpandaops-mcp /app/ethpandaops-mcp
 COPY --from=builder /app/proxy /app/proxy
 
 # Copy embedding model and llama.cpp shared library
@@ -128,5 +128,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD nc -z localhost 2480 || exit 1
 
 # Default command - start MCP server with streamable-http transport
-ENTRYPOINT ["/app/mcp"]
+ENTRYPOINT ["/app/ethpandaops-mcp"]
 CMD ["serve", "--transport", "streamable-http"]
