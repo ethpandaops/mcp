@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +12,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 
 	clickhouseplugin "github.com/ethpandaops/mcp/plugins/clickhouse"
+	doraplugin "github.com/ethpandaops/mcp/plugins/dora"
 	lokiplugin "github.com/ethpandaops/mcp/plugins/loki"
 	prometheusplugin "github.com/ethpandaops/mcp/plugins/prometheus"
 )
@@ -114,7 +114,7 @@ func runTest(_ *cobra.Command, _ []string) error {
 		result.ExitCode, result.DurationSeconds, result.ExecutionID)
 
 	if result.ExitCode != 0 {
-		os.Exit(result.ExitCode)
+		return fmt.Errorf("script exited with code %d", result.ExitCode)
 	}
 
 	return nil
@@ -170,8 +170,9 @@ func buildTestPluginRegistry(cfg *config.Config) (*plugin.Registry, error) {
 
 	// Register all compiled-in plugins.
 	reg.Add(clickhouseplugin.New())
-	reg.Add(prometheusplugin.New())
+	reg.Add(doraplugin.New())
 	reg.Add(lokiplugin.New())
+	reg.Add(prometheusplugin.New())
 
 	// Initialize plugins that have config.
 	for _, name := range reg.All() {

@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -649,7 +650,7 @@ func (s *simpleService) writeHTMLError(w http.ResponseWriter, status int, title,
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>%s</title></head><body><h1>%s</h1><p>%s</p></body></html>`,
-		title, title, message)
+		html.EscapeString(title), html.EscapeString(title), html.EscapeString(message))
 }
 
 func (s *simpleService) writeUnauthorized(w http.ResponseWriter, description string) {

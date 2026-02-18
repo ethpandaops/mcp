@@ -75,6 +75,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("building server: %w", err)
 	}
 
+	defer func() {
+		if err := svc.Stop(); err != nil {
+			log.WithError(err).Error("Failed to stop server")
+		}
+	}()
+
 	// Handle graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -82,6 +88,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	go func() {
 		sig := <-sigCh
 		log.WithField("signal", sig).Info("Received shutdown signal")
+		signal.Stop(sigCh)
 		cancel()
 	}()
 

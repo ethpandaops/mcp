@@ -18,8 +18,26 @@ import (
 	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 )
 
-// validIdentifier matches valid ClickHouse table/column identifiers.
-var validIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// Pre-compiled regexes for schema parsing.
+var (
+	// validIdentifier matches valid ClickHouse table/column identifiers.
+	validIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+	// enginePattern extracts the engine name from a CREATE TABLE statement.
+	enginePattern = regexp.MustCompile(`ENGINE\s*=\s*(\w+)`)
+
+	// tableCommentPattern extracts the table comment from a CREATE TABLE statement.
+	tableCommentPattern = regexp.MustCompile(`COMMENT\s+'([^']*)'`)
+
+	// columnPattern extracts column name and type from a column definition line.
+	columnPattern = regexp.MustCompile("(?m)^\\s*`([^`]+)`\\s+([^,\\n]+)")
+
+	// columnCommentPattern extracts the comment from a column definition.
+	columnCommentPattern = regexp.MustCompile(`COMMENT\s+'([^']*)'`)
+
+	// defaultPattern extracts the default expression from a column definition.
+	defaultPattern = regexp.MustCompile(`(DEFAULT|MATERIALIZED|ALIAS)\s+([^,\n]+?)(?:\s+(?:CODEC|COMMENT|$))`)
+)
 
 const (
 	// DefaultSchemaRefreshInterval is the refresh interval for schema discovery.
@@ -76,10 +94,6 @@ type ClickHouseSchemaClient interface {
 	GetAllTables() map[string]*ClusterTables
 	// GetTable returns schema for a specific table (searches all clusters).
 	GetTable(tableName string) (*TableSchema, string, bool)
-	// GetTablesByCluster returns tables for a specific cluster.
-	GetTablesByCluster(clusterName string) (*ClusterTables, bool)
-	// GetClusters returns available cluster names.
-	GetClusters() []string
 }
 
 // Compile-time interface compliance check.
@@ -93,7 +107,6 @@ type clickhouseSchemaClient struct {
 	mu          sync.RWMutex
 	clusters    map[string]*ClusterTables
 	datasources map[string]string // cluster name -> datasource name
-	lastUpdated time.Time
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -154,15 +167,17 @@ func (c *clickhouseSchemaClient) Start(ctx context.Context) error {
 			c.log.WithError(err).Warn("Initial schema fetch failed, will retry on next refresh interval")
 		} else {
 			tableCount := 0
+			clusterCount := 0
 
 			c.mu.RLock()
+			clusterCount = len(c.clusters)
 			for _, cluster := range c.clusters {
 				tableCount += len(cluster.Tables)
 			}
 			c.mu.RUnlock()
 
 			c.log.WithFields(logrus.Fields{
-				"cluster_count": len(c.clusters),
+				"cluster_count": clusterCount,
 				"table_count":   tableCount,
 			}).Info("Initial ClickHouse schema fetch completed")
 		}
@@ -256,45 +271,6 @@ func (c *clickhouseSchemaClient) GetTable(tableName string) (*TableSchema, strin
 	return nil, "", false
 }
 
-// GetTablesByCluster returns tables for a specific cluster.
-func (c *clickhouseSchemaClient) GetTablesByCluster(clusterName string) (*ClusterTables, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	cluster, ok := c.clusters[clusterName]
-	if !ok {
-		return nil, false
-	}
-
-	// Return a copy.
-	clusterCopy := &ClusterTables{
-		ClusterName: cluster.ClusterName,
-		Tables:      make(map[string]*TableSchema, len(cluster.Tables)),
-		LastUpdated: cluster.LastUpdated,
-	}
-
-	for tableName, schema := range cluster.Tables {
-		clusterCopy.Tables[tableName] = schema
-	}
-
-	return clusterCopy, true
-}
-
-// GetClusters returns available cluster names.
-func (c *clickhouseSchemaClient) GetClusters() []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	clusters := make([]string, 0, len(c.clusters))
-	for name := range c.clusters {
-		clusters = append(clusters, name)
-	}
-
-	sort.Strings(clusters)
-
-	return clusters
-}
-
 // backgroundRefresh periodically refreshes the schema data.
 func (c *clickhouseSchemaClient) backgroundRefresh() {
 	defer c.wg.Done()
@@ -365,7 +341,6 @@ func (c *clickhouseSchemaClient) refresh(ctx context.Context) error {
 	// Atomic update.
 	c.mu.Lock()
 	c.clusters = newClusters
-	c.lastUpdated = time.Now()
 	c.mu.Unlock()
 
 	return nil
@@ -653,13 +628,11 @@ func parseCreateTable(tableName, createStmt string) (*TableSchema, error) {
 	}
 
 	// Extract engine.
-	enginePattern := regexp.MustCompile(`ENGINE\s*=\s*(\w+)`)
 	if matches := enginePattern.FindStringSubmatch(createStmt); len(matches) > 1 {
 		schema.Engine = matches[1]
 	}
 
 	// Extract table comment.
-	tableCommentPattern := regexp.MustCompile(`COMMENT\s+'([^']*)'`)
 	if matches := tableCommentPattern.FindStringSubmatch(createStmt); len(matches) > 1 {
 		schema.Comment = matches[1]
 	}
@@ -699,9 +672,6 @@ outerLoop:
 
 	// Parse each column definition.
 	// Column format: `name` Type [DEFAULT expr] [CODEC(...)] [COMMENT 'comment'].
-	columnPattern := regexp.MustCompile("(?m)^\\s*`([^`]+)`\\s+([^,\\n]+)")
-	commentPattern := regexp.MustCompile(`COMMENT\s+'([^']*)'`)
-	defaultPattern := regexp.MustCompile(`(DEFAULT|MATERIALIZED|ALIAS)\s+([^,\n]+?)(?:\s+(?:CODEC|COMMENT|$))`)
 
 	lines := strings.Split(columnsSection, "\n")
 
@@ -725,7 +695,7 @@ outerLoop:
 		col.Type = cleanColumnType(col.Type)
 
 		// Extract comment.
-		if commentMatches := commentPattern.FindStringSubmatch(line); len(commentMatches) > 1 {
+		if commentMatches := columnCommentPattern.FindStringSubmatch(line); len(commentMatches) > 1 {
 			col.Comment = commentMatches[1]
 		}
 

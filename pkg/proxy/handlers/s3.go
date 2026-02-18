@@ -108,6 +108,8 @@ func (h *S3Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Create the proxied request.
 	ctx := r.Context()
 
+	const maxUploadSize = 100 * 1024 * 1024 // 100 MB
+
 	var bodyBytes []byte
 
 	if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -115,9 +117,14 @@ func (h *S3Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// AWS SigV4 requires consistent Content-Length between signing and sending.
 		var err error
 
-		bodyBytes, err = io.ReadAll(r.Body)
+		bodyBytes, err = io.ReadAll(io.LimitReader(r.Body, maxUploadSize+1))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read request body: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		if len(bodyBytes) > maxUploadSize {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 			return
 		}
 	}
