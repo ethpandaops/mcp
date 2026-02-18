@@ -1,5 +1,8 @@
 # Binaries
 /mcp
+/ethpandaops-mcp
+/proxy
+ethpandaops-mcp-linux-*
 mcp-linux-*
 *.exe
 
