@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/config"
 )
 
 // Session represents a persistent sandbox execution environment.

@@ -215,5 +215,6 @@ Default execution timeout is 60s, max 600s. For large analyses:
 - Use `xatu-cbt` for pre-aggregated metrics, `xatu` for raw event data
 - Check `python://ethpandaops` resource for complete API documentation
 - Use `search_examples` before writing complex queries from scratch
+- Use `search_runbooks` to find runbooks for common workflows
 - Upload visualizations with `storage.upload()` for shareable URLs
 - NEVER just copy/paste/recite base64 of images. You MUST save the image to the workspace and upload it to give it back to the user.

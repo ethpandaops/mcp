@@ -1,0 +1,32 @@
+name: Docker Build
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  build-mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MCP image
+        run: docker build -f Dockerfile.mcp .
+
+  build-proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build proxy image
+        run: docker build -f Dockerfile.proxy .
+
+  build-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sandbox image
+        run: docker build -f sandbox/Dockerfile .

@@ -38,15 +38,6 @@ type ClusterConfig struct {
 	Timeout int `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
-// IsSecure returns whether TLS is enabled (defaults to true).
-func (c *ClusterConfig) IsSecure() bool {
-	if c.Secure == nil {
-		return true
-	}
-
-	return *c.Secure
-}
-
 // SchemaDiscoveryConfig holds configuration for ClickHouse schema discovery.
 type SchemaDiscoveryConfig struct {
 	// Enabled controls whether schema discovery is active. Defaults to true if datasources are configured.

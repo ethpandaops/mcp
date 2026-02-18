@@ -86,17 +86,14 @@ func (s *service) Start(ctx context.Context) error {
 
 		return errors.New("server already running")
 	}
+
+	s.running = true
 	s.mu.Unlock()
 
 	s.log.WithFields(logrus.Fields{
 		"transport": s.cfg.Transport,
 		"version":   version.Version,
 	}).Info("Starting MCP server")
-
-	// Mark as running only after successful initialization.
-	s.mu.Lock()
-	s.running = true
-	s.mu.Unlock()
 
 	// Create the MCP server
 	s.mcpServer = mcpserver.NewMCPServer(
@@ -311,7 +308,12 @@ func (s *service) runSSE(ctx context.Context) error {
 	s.sseServer = mcpserver.NewSSEServer(s.mcpServer, opts...)
 
 	// Build HTTP handler with auth.
-	handler := s.buildHTTPHandler(s.sseServer)
+	handler := s.buildHTTPHandler(map[string]http.Handler{
+		"/sse":       s.sseServer,
+		"/sse/*":     s.sseServer,
+		"/message":   s.sseServer,
+		"/message/*": s.sseServer,
+	})
 
 	s.httpServer = &http.Server{
 		Addr:              addr,
@@ -331,7 +333,10 @@ func (s *service) runSSE(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return s.httpServer.Shutdown(ctx)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		return s.httpServer.Shutdown(shutdownCtx)
 	case <-s.done:
 		return nil
 	case err := <-errCh:
@@ -354,7 +359,10 @@ func (s *service) runStreamableHTTP(ctx context.Context) error {
 	s.streamableHTTPServer = mcpserver.NewStreamableHTTPServer(s.mcpServer)
 
 	// Build HTTP handler with auth.
-	handler := s.buildStreamableHTTPHandler(s.streamableHTTPServer)
+	handler := s.buildHTTPHandler(map[string]http.Handler{
+		"/mcp":   s.streamableHTTPServer,
+		"/mcp/*": s.streamableHTTPServer,
+	})
 
 	s.httpServer = &http.Server{
 		Addr:              addr,
@@ -374,7 +382,10 @@ func (s *service) runStreamableHTTP(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return s.httpServer.Shutdown(ctx)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		return s.httpServer.Shutdown(shutdownCtx)
 	case <-s.done:
 		return nil
 	case err := <-errCh:
@@ -386,8 +397,8 @@ func (s *service) runStreamableHTTP(ctx context.Context) error {
 	}
 }
 
-// buildHTTPHandler creates an HTTP handler with routes.
-func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
+// buildHTTPHandler creates an HTTP handler with auth, health, and MCP routes.
+func (s *service) buildHTTPHandler(routes map[string]http.Handler) http.Handler {
 	r := chi.NewRouter()
 
 	// Apply auth middleware if enabled.
@@ -410,42 +421,10 @@ func (s *service) buildHTTPHandler(mcpHandler http.Handler) http.Handler {
 		_, _ = w.Write([]byte("ready"))
 	})
 
-	// Mount MCP handler.
-	r.Handle("/sse", mcpHandler)
-	r.Handle("/sse/*", mcpHandler)
-	r.Handle("/message", mcpHandler)
-	r.Handle("/message/*", mcpHandler)
-
-	return r
-}
-
-// buildStreamableHTTPHandler creates an HTTP handler for Streamable HTTP transport.
-func (s *service) buildStreamableHTTPHandler(mcpHandler http.Handler) http.Handler {
-	r := chi.NewRouter()
-
-	// Apply auth middleware if enabled.
-	if s.auth != nil && s.auth.Enabled() {
-		r.Use(s.auth.Middleware())
+	// Mount MCP handler at specified routes.
+	for pattern, handler := range routes {
+		r.Handle(pattern, handler)
 	}
-
-	// Mount auth routes (discovery endpoints, OAuth flow).
-	if s.auth != nil {
-		s.auth.MountRoutes(r)
-	}
-
-	// Health endpoints.
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
-	})
-
-	// Mount Streamable HTTP MCP handler on /mcp (the standard endpoint).
-	r.Handle("/mcp", mcpHandler)
-	r.Handle("/mcp/*", mcpHandler)
 
 	return r
 }

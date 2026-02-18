@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/config"
 )
 
 // Service defines the interface for sandbox code execution backends.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -89,7 +90,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	<-ctx.Done()
 
 	// Graceful shutdown.
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*1e9) // 30 seconds
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := svc.Stop(shutdownCtx); err != nil {

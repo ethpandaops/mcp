@@ -17,7 +17,6 @@ import (
 type Plugin struct {
 	cfg                 Config
 	cartographoorClient resource.CartographoorClient
-	log                 logrus.FieldLogger
 }
 
 // New creates a new Dora plugin.
@@ -165,11 +164,6 @@ func (p *Plugin) SetCartographoorClient(client any) {
 	if c, ok := client.(resource.CartographoorClient); ok {
 		p.cartographoorClient = c
 	}
-}
-
-// SetLogger sets the logger for the plugin.
-func (p *Plugin) SetLogger(log logrus.FieldLogger) {
-	p.log = log.WithField("plugin", "dora")
 }
 
 // RegisterResources is a no-op since Dora uses networks:// resources.
