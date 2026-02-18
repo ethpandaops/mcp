@@ -1,7 +1,10 @@
 package proxy
 
 import (
+	"bytes"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -189,6 +192,14 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
+			// Capture the request body before the downstream handler consumes it.
+			// Skip for S3 routes since those are binary file uploads.
+			var bodySnapshot string
+
+			if a.cfg.LogQueries && r.Body != nil && !isS3Route(r.URL.Path) {
+				bodySnapshot = captureBody(r, a.cfg.MaxQueryLength)
+			}
+
 			// Wrap response writer to capture status code.
 			wrapped := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 
@@ -212,7 +223,7 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 
 			// Add query if configured.
 			if a.cfg.LogQueries {
-				query := extractQuery(r)
+				query := extractQuery(r, bodySnapshot)
 				if len(query) > a.cfg.MaxQueryLength {
 					query = query[:a.cfg.MaxQueryLength] + "..."
 				}
@@ -262,18 +273,44 @@ func extractDatasource(path string) string {
 	}
 }
 
+// captureBody reads up to maxLen bytes from the request body and replaces it
+// with a new reader so downstream handlers can still consume it.
+func captureBody(r *http.Request, maxLen int) string {
+	// Read up to maxLen+1 to detect truncation without reading the entire body.
+	limit := int64(maxLen + 1)
+
+	buf, err := io.ReadAll(io.LimitReader(r.Body, limit))
+	if err != nil || len(buf) == 0 {
+		// Restore body even on error.
+		r.Body = io.NopCloser(bytes.NewReader(buf))
+
+		return ""
+	}
+
+	// Restore the full body for downstream handlers.
+	remaining, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(buf), bytes.NewReader(remaining)))
+
+	return strings.TrimSpace(string(buf))
+}
+
+// isS3Route returns true if the path is an S3 route (binary uploads).
+func isS3Route(path string) bool {
+	return len(path) > 3 && path[:4] == "/s3/"
+}
+
 // extractQuery extracts query content from the request.
-func extractQuery(r *http.Request) string {
-	// Try URL query parameter first (ClickHouse uses this).
+// It checks URL query parameters first, then falls back to the captured POST body.
+func extractQuery(r *http.Request, bodySnapshot string) string {
+	// Try URL query parameter first (used by all datasources for GET requests).
 	if q := r.URL.Query().Get("query"); q != "" {
 		return q
 	}
 
-	// For Prometheus/Loki, check the query parameter.
-	if q := r.URL.Query().Get("query"); q != "" {
-		return q
+	// Fall back to captured POST body (ClickHouse sends SQL as POST body).
+	if bodySnapshot != "" {
+		return bodySnapshot
 	}
 
-	// No query found.
 	return ""
 }
