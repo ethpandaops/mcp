@@ -10,9 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/config"
 )
 
 // Service defines the interface for observability services.

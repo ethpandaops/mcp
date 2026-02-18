@@ -110,7 +110,7 @@ func (h *searchRunbooksHandler) handle(_ context.Context, request mcp.CallToolRe
 
 	tagFilter := request.GetString("tag", "")
 
-	limit := int(request.GetInt("limit", DefaultRunbookSearchLimit))
+	limit := request.GetInt("limit", DefaultRunbookSearchLimit)
 	if limit <= 0 {
 		limit = DefaultRunbookSearchLimit
 	}

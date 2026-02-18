@@ -313,5 +313,6 @@ Default execution timeout is 60s, max 600s. For large analyses:
 - Always filter ClickHouse queries on partition keys (`slot_start_date_time`)
 - Use `xatu-cbt` for pre-aggregated metrics, `xatu` for raw event data
 - Search examples before writing complex queries from scratch
+- Search runbooks for common investigation workflows
 - Upload visualizations with `storage.upload()` for shareable URLs
 - NEVER just copy/paste/recite base64 of images. You MUST save the image to the workspace and upload it to give it back to the user.

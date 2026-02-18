@@ -91,7 +91,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*T
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubTokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("%w: creating request: %v", ErrGitHubOAuth, err)
+		return nil, fmt.Errorf("%w: creating request: %w", ErrGitHubOAuth, err)
 	}
 
 	req.Header.Set("Accept", "application/json")
@@ -99,14 +99,14 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*T
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: exchanging code: %v", ErrGitHubOAuth, err)
+		return nil, fmt.Errorf("%w: exchanging code: %w", ErrGitHubOAuth, err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading response: %v", ErrGitHubOAuth, err)
+		return nil, fmt.Errorf("%w: reading response: %w", ErrGitHubOAuth, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -120,7 +120,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*T
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, fmt.Errorf("%w: parsing response: %v", ErrGitHubOAuth, err)
+		return nil, fmt.Errorf("%w: parsing response: %w", ErrGitHubOAuth, err)
 	}
 
 	if tokenResp.Error != "" {
@@ -162,7 +162,7 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*GitHubUser, 
 		"github_id": user.ID,
 		"login":     user.Login,
 		"orgs":      orgs,
-	}).Info("Fetched GitHub user profile")
+	}).Debug("Fetched GitHub user profile")
 
 	return user, nil
 }
@@ -171,7 +171,7 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*GitHubUser, 
 func (c *Client) getUserProfile(ctx context.Context, accessToken string) (*githubUserResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/user", githubAPIURL), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: creating request: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: creating request: %w", ErrGitHubAPI, err)
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
@@ -180,14 +180,14 @@ func (c *Client) getUserProfile(ctx context.Context, accessToken string) (*githu
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: fetching user: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: fetching user: %w", ErrGitHubAPI, err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading response: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: reading response: %w", ErrGitHubAPI, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -201,7 +201,7 @@ func (c *Client) getUserProfile(ctx context.Context, accessToken string) (*githu
 
 	var userResp githubUserResponse
 	if err := json.Unmarshal(body, &userResp); err != nil {
-		return nil, fmt.Errorf("%w: parsing response: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: parsing response: %w", ErrGitHubAPI, err)
 	}
 
 	return &userResp, nil
@@ -211,7 +211,7 @@ func (c *Client) getUserProfile(ctx context.Context, accessToken string) (*githu
 func (c *Client) getUserOrganizations(ctx context.Context, accessToken string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/user/orgs", githubAPIURL), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: creating request: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: creating request: %w", ErrGitHubAPI, err)
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
@@ -220,14 +220,14 @@ func (c *Client) getUserOrganizations(ctx context.Context, accessToken string) (
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: fetching orgs: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: fetching orgs: %w", ErrGitHubAPI, err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading response: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: reading response: %w", ErrGitHubAPI, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -240,7 +240,7 @@ func (c *Client) getUserOrganizations(ctx context.Context, accessToken string) (
 
 	var orgsResp []githubOrgResponse
 	if err := json.Unmarshal(body, &orgsResp); err != nil {
-		return nil, fmt.Errorf("%w: parsing response: %v", ErrGitHubAPI, err)
+		return nil, fmt.Errorf("%w: parsing response: %w", ErrGitHubAPI, err)
 	}
 
 	orgs := make([]string, 0, len(orgsResp))

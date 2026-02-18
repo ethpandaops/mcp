@@ -226,9 +226,10 @@ func (s *server) handleDatasources(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(info); err != nil {
-		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+		s.log.WithError(err).Error("Failed to encode datasources response")
 	}
 }
 

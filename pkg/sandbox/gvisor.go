@@ -6,8 +6,9 @@ import (
 
 	"github.com/docker/docker/api/types/system"
 	"github.com/docker/docker/client"
-	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/config"
 )
 
 // gVisorRuntimeName is the Docker runtime name for gVisor.

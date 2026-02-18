@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,9 +20,10 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/config"
 )
 
 // Container label keys for identifying and managing ethpandaops-mcp containers.
@@ -539,7 +541,9 @@ func (b *DockerBackend) execInContainer(
 	// Write the script to the container using docker exec with heredoc.
 	scriptPath := fmt.Sprintf("/tmp/script_%s.py", executionID)
 
-	writeCmd := []string{"sh", "-c", fmt.Sprintf("cat > %s << 'MCP_EOF'\n%s\nMCP_EOF", scriptPath, code)}
+	// Use base64 encoding to safely transfer code without shell injection via heredoc.
+	encoded := base64.StdEncoding.EncodeToString([]byte(code))
+	writeCmd := []string{"sh", "-c", fmt.Sprintf("echo %s | base64 -d > %s", encoded, scriptPath)}
 
 	writeConfig := container.ExecOptions{
 		Cmd:          writeCmd,

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethpandaops/mcp/pkg/types"
 	"gopkg.in/yaml.v3"
+
+	"github.com/ethpandaops/mcp/pkg/types"
 )
 
 //go:embed examples.yaml

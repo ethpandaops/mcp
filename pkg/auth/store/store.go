@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethpandaops/mcp/pkg/auth/client"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/mcp/pkg/auth/client"
 )
 
 // Store manages local credential storage.

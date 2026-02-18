@@ -1,11 +1,22 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
+
+// ExitCodeError is returned by commands that need to exit with a specific code.
+type ExitCodeError struct {
+	Code int
+}
+
+func (e *ExitCodeError) Error() string {
+	return fmt.Sprintf("exit code %d", e.Code)
+}
 
 var (
 	cfgFile  string
@@ -32,10 +43,17 @@ Prometheus metrics, Loki logs, and sandboxed Python execution.`,
 
 		return nil
 	},
+	SilenceErrors: true,
 }
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.Code)
+		}
+
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }

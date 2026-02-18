@@ -181,9 +181,9 @@ func runRun(_ *cobra.Command, _ []string) error {
 		fmt.Fprintf(os.Stderr, "[session] %s\n", result.SessionID)
 	}
 
-	// Exit with the sandbox exit code.
+	// Exit with the sandbox exit code so the calling agent can detect errors.
 	if result.ExitCode != 0 {
-		os.Exit(result.ExitCode)
+		return &ExitCodeError{Code: result.ExitCode}
 	}
 
 	return nil

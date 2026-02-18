@@ -119,7 +119,7 @@ func createGettingStartedHandler(
 
 			desc = strings.TrimSpace(desc)
 
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", tool.Name, desc))
+			fmt.Fprintf(&sb, "- **%s**: %s\n", tool.Name, desc)
 		}
 
 		// Dynamically list resources.
@@ -137,7 +137,7 @@ func createGettingStartedHandler(
 				continue
 			}
 
-			sb.WriteString(fmt.Sprintf("- `%s` - %s\n", res.URI, res.Name))
+			fmt.Fprintf(&sb, "- `%s` - %s\n", res.URI, res.Name)
 		}
 
 		// Template resources.
@@ -150,7 +150,7 @@ func createGettingStartedHandler(
 			})
 
 			for _, tmpl := range templates {
-				sb.WriteString(fmt.Sprintf("- `%s` - %s\n", tmpl.URITemplate.Raw(), tmpl.Name))
+				fmt.Fprintf(&sb, "- `%s` - %s\n", tmpl.URITemplate.Raw(), tmpl.Name)
 			}
 		}
 
