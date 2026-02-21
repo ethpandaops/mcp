@@ -105,22 +105,69 @@ result = prometheus.query_range(
 
 ### Loki - Log Data
 
+**Always discover labels first.** Before querying logs, fetch the available labels and their values so you can add the right filters. Unfiltered Loki queries are slow and may time out — label filters narrow the search at the storage level and are essential for efficient log retrieval.
+
 ```python
 from ethpandaops import loki
 
-# List instances
+# Step 1: List instances
 instances = loki.list_datasources()
 
-# Query logs
+# Step 2: Fetch all available labels
+labels = loki.get_labels("ethpandaops")
+print(labels)
+# Example: ['app', 'cluster', 'ethereum_cl', 'ethereum_el', 'ethereum_network',
+#           'instance', 'namespace', 'node', 'testnet', 'validator_client', ...]
+
+# Step 3: Get values for a specific label to build your filter
+networks = loki.get_label_values("ethpandaops", "testnet")
+print(networks)  # e.g. ['fusaka-devnet-3', 'holesky', 'sepolia', ...]
+
+cl_clients = loki.get_label_values("ethpandaops", "ethereum_cl")
+print(cl_clients)  # e.g. ['lighthouse', 'prysm', 'teku', 'nimbus', 'lodestar', 'grandine']
+
+# Step 4: Query logs with label filters
 logs = loki.query(
     "ethpandaops",
-    '{app="beacon-node"} |= "error"',
+    '{testnet="holesky", ethereum_cl="lighthouse"} |= "error"',
     start="now-1h",
     limit=100
 )
 ```
 
+**Key labels for Ethereum log queries:**
+- `testnet` — network/devnet name (e.g. `holesky`, `fusaka-devnet-3`)
+- `ethereum_cl` — consensus layer client (e.g. `lighthouse`, `prysm`, `teku`)
+- `ethereum_el` — execution layer client (e.g. `geth`, `nethermind`, `besu`)
+- `ethereum_network` — Ethereum network name
+- `instance` — specific node instance
+- `validator_client` — validator client name
+
+**Log level formats vary by client.** When filtering logs by severity, be aware that Ethereum clients format log levels differently:
+- Keywords: `CRIT`, `ERR`, `ERROR`, `WARN`, `INFO`, `DEBUG`
+- Structured fields: `level=error`, `"level":"error"`, `"severity":"ERROR"`
+- Shorthand: `E`, `W`, `C`
+
+Start with `|~ "(?i)(CRIT|ERR)"` as a default filter. If it returns no results, fetch a few unfiltered log lines to identify the client's format, then adapt the regex (e.g. `|~ "level=(error|fatal)"`).
+
 ### Dora - Beacon Chain Explorer
+
+**Discovering all Dora API endpoints:**
+
+Before using Dora, discover the full set of available API endpoints by fetching the Swagger documentation. The swagger page is always at `<dora-url>/api/swagger/index.html`.
+
+1. First, get the Dora base URL for the network:
+```python
+from ethpandaops import dora
+base_url = dora.get_base_url("mainnet")
+print(f"Swagger docs: {base_url}/api/swagger/index.html")
+```
+
+2. Then use `WebFetch` to read the swagger page at `{base_url}/api/swagger/index.html` to discover all supported API endpoints for that Dora instance. This is important because different Dora deployments may support different endpoints.
+
+3. Use the discovered endpoints to make targeted API calls via the Python `dora` module or direct HTTP requests.
+
+**Common API usage:**
 
 ```python
 from ethpandaops import dora
@@ -139,6 +186,19 @@ if epochs_behind > 2:
 link = dora.link_validator("mainnet", "12345")
 link = dora.link_slot("mainnet", "9000000")
 link = dora.link_epoch("mainnet", 280000)
+```
+
+**Direct HTTP calls for endpoints not in the Python module:**
+
+```python
+from ethpandaops import dora
+import httpx
+
+base_url = dora.get_base_url("mainnet")
+# Call any endpoint discovered from swagger
+with httpx.Client(timeout=30) as client:
+    resp = client.get(f"{base_url}/api/v1/<endpoint>")
+    data = resp.json()
 ```
 
 ### Storage - Upload Outputs
