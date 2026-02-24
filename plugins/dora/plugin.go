@@ -147,12 +147,12 @@ from ethpandaops import dora
 networks = dora.list_networks()
 
 # Get network overview
-overview = dora.get_network_overview("holesky")
+overview = dora.get_network_overview("hoodi")
 print(f"Current epoch: {overview['current_epoch']}")
 
 # Look up a validator and get a deep link
-validator = dora.get_validator("holesky", "12345")
-link = dora.link_validator("holesky", "12345")
+validator = dora.get_validator("hoodi", "12345")
+link = dora.link_validator("hoodi", "12345")
 print(f"View in Dora: {link}")
 ` + "```" + `
 `

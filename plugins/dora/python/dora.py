@@ -7,8 +7,8 @@ Example:
     from ethpandaops import dora
 
     networks = dora.list_networks()
-    overview = dora.get_network_overview("holesky")
-    link = dora.link_validator("holesky", "12345")
+    overview = dora.get_network_overview("hoodi")
+    link = dora.link_validator("hoodi", "12345")
 """
 
 import json

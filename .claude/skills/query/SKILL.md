@@ -121,7 +121,7 @@ print(labels)
 
 # Step 3: Get values for a specific label to build your filter
 networks = loki.get_label_values("ethpandaops", "testnet")
-print(networks)  # e.g. ['fusaka-devnet-3', 'holesky', 'sepolia', ...]
+print(networks)  # e.g. ['fusaka-devnet-3', 'hoodi', 'sepolia', ...]
 
 cl_clients = loki.get_label_values("ethpandaops", "ethereum_cl")
 print(cl_clients)  # e.g. ['lighthouse', 'prysm', 'teku', 'nimbus', 'lodestar', 'grandine']
@@ -129,14 +129,14 @@ print(cl_clients)  # e.g. ['lighthouse', 'prysm', 'teku', 'nimbus', 'lodestar', 
 # Step 4: Query logs with label filters
 logs = loki.query(
     "ethpandaops",
-    '{testnet="holesky", ethereum_cl="lighthouse"} |= "error"',
+    '{testnet="hoodi", ethereum_cl="lighthouse"} |= "error"',
     start="now-1h",
     limit=100
 )
 ```
 
 **Key labels for Ethereum log queries:**
-- `testnet` — network/devnet name (e.g. `holesky`, `fusaka-devnet-3`)
+- `testnet` — network/devnet name (e.g. `hoodi`, `fusaka-devnet-3`)
 - `ethereum_cl` — consensus layer client (e.g. `lighthouse`, `prysm`, `teku`)
 - `ethereum_el` — execution layer client (e.g. `geth`, `nethermind`, `besu`)
 - `ethereum_network` — Ethereum network name
