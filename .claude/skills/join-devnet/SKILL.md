@@ -29,7 +29,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/join-devnet.sh <devnet-name> <config-dir> [el_c
 | `devnet-name` | (required) | Devnet identifier (e.g. `bal-devnet-2`, `fusaka-devnet-3`) |
 | `config-dir` | (required) | Path to directory containing network config files |
 | `el_client` | `geth` | EL client: `geth`, `besu`, `nethermind`, `reth`, `ethrex`, `erigon`, `nimbus-el` |
-| `cl_client` | `lighthouse` | CL client: `lighthouse`, `lodestar` |
+| `cl_client` | `lighthouse` | CL client: `lighthouse`, `lodestar`, `teku`, `prysm`, `nimbus`, `grandine` |
 | `el_image` | `ethpandaops/<el>:<devnet>` | Override EL Docker image |
 | `cl_image` | `ethpandaops/<cl>:<devnet>` | Override CL Docker image |
 
@@ -139,6 +139,10 @@ docker network rm <devnet> 2>/dev/null
 - **Reth**: Uses `--full` flag for full sync. Uses `genesis.json`.
 - **Erigon**: Uses `genesis.json`. May need `--syncmode=full` depending on version.
 - **Geth**: Needs one-time `init` with `genesis.json` before starting.
+- **Teku**: Uses `--network` for config.yaml, `--initial-state` for genesis.ssz. Java-based, may need memory tuning.
+- **Prysm**: Requires `--accept-terms-of-use`. Uses `--grpc-gateway-port` for REST API (not `--http-port`). Checkpoint sync needs both `--checkpoint-sync-url` and `--genesis-beacon-api-url`.
+- **Nimbus** (CL): Uses `--network` pointing to config directory (not file). Checkpoint sync flag is `--external-beacon-api-url`.
+- **Grandine**: Uses `--configuration-directory` for config dir. Uses `--eth1-rpc-urls` (not `--execution-endpoint`).
 
 ## Testing a Fix
 

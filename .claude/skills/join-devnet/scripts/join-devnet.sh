@@ -14,7 +14,7 @@ if [ $# -lt 2 ]; then
   echo "  devnet-name  Devnet identifier (e.g. bal-devnet-2)"
   echo "  config-dir   Path to network config directory"
   echo "  el_client    geth (default), besu, nethermind, reth, ethrex, erigon, nimbus-el"
-  echo "  cl_client    lighthouse (default), lodestar"
+  echo "  cl_client    lighthouse (default), lodestar, teku, prysm, nimbus, grandine"
   echo "  el_image     Override EL Docker image (default: ethpandaops/<el>:<devnet>)"
   echo "  cl_image     Override CL Docker image (default: ethpandaops/<cl>:<devnet>)"
   echo ""
@@ -356,9 +356,105 @@ case "$CL" in
       "${LS_EXTRA_ARGS[@]}"
     ;;
 
+  teku)
+    TEKU_EXTRA_ARGS=()
+    if [ -n "$CHECKPOINT_SYNC_URL" ]; then
+      TEKU_EXTRA_ARGS+=(--checkpoint-sync-url="$CHECKPOINT_SYNC_URL")
+    fi
+    docker run -d --name "$CONTAINER_CL" \
+      --network "$DEVNET" \
+      -v "$CONFIG_DIR:/config:ro" \
+      -v "$CL_DATADIR:/data" \
+      -p $CL_HTTP:5052 -p $CL_P2P:9000/tcp -p $CL_P2P:9000/udp \
+      "$CL_IMAGE" \
+      --data-path=/data \
+      --network=/config/config.yaml \
+      --initial-state=/config/genesis.ssz \
+      --ee-jwt-secret-file=/config/jwt.hex \
+      --ee-endpoint="http://$CONTAINER_EL:8551" \
+      --p2p-port=9000 --p2p-advertised-ip="$MY_IP" \
+      --rest-api-enabled --rest-api-interface=0.0.0.0 --rest-api-port=5052 \
+      --rest-api-host-allowlist='*' \
+      --p2p-discovery-bootnodes="$BOOTNODES" \
+      --Xee-version=eebyebye \
+      "${TEKU_EXTRA_ARGS[@]}"
+    ;;
+
+  prysm)
+    PRYSM_EXTRA_ARGS=()
+    if [ -n "$CHECKPOINT_SYNC_URL" ]; then
+      PRYSM_EXTRA_ARGS+=(--checkpoint-sync-url="$CHECKPOINT_SYNC_URL" --genesis-beacon-api-url="$CHECKPOINT_SYNC_URL")
+    fi
+    docker run -d --name "$CONTAINER_CL" \
+      --network "$DEVNET" \
+      -v "$CONFIG_DIR:/config:ro" \
+      -v "$CL_DATADIR:/data" \
+      -p $CL_HTTP:5052 -p $CL_P2P:9000/tcp -p $CL_P2P:9000/udp \
+      "$CL_IMAGE" \
+      --datadir=/data \
+      --chain-config-file=/config/config.yaml \
+      --genesis-state=/config/genesis.ssz \
+      --jwt-secret=/config/jwt.hex \
+      --execution-endpoint="http://$CONTAINER_EL:8551" \
+      --p2p-tcp-port=9000 --p2p-udp-port=9000 \
+      --p2p-host-ip="$MY_IP" \
+      --grpc-gateway-host=0.0.0.0 --grpc-gateway-port=5052 \
+      --rpc-host=0.0.0.0 --rpc-port=4000 \
+      --bootstrap-node="$BOOTNODES" \
+      --accept-terms-of-use \
+      --min-sync-peers=1 \
+      "${PRYSM_EXTRA_ARGS[@]}"
+    ;;
+
+  nimbus)
+    NIMBUS_EXTRA_ARGS=()
+    if [ -n "$CHECKPOINT_SYNC_URL" ]; then
+      NIMBUS_EXTRA_ARGS+=(--external-beacon-api-url="$CHECKPOINT_SYNC_URL")
+    fi
+    docker run -d --name "$CONTAINER_CL" \
+      --network "$DEVNET" \
+      -v "$CONFIG_DIR:/config:ro" \
+      -v "$CL_DATADIR:/data" \
+      -p $CL_HTTP:5052 -p $CL_P2P:9000/tcp -p $CL_P2P:9000/udp \
+      "$CL_IMAGE" \
+      --data-dir=/data \
+      --network=/config \
+      --jwt-secret=/config/jwt.hex \
+      --web3-url="http://$CONTAINER_EL:8551" \
+      --tcp-port=9000 --udp-port=9000 \
+      --nat="extip:$MY_IP" \
+      --rest --rest-address=0.0.0.0 --rest-port=5052 \
+      --bootstrap-node="$BOOTNODES" \
+      --insecure-netkey-password=true \
+      "${NIMBUS_EXTRA_ARGS[@]}"
+    ;;
+
+  grandine)
+    GRANDINE_EXTRA_ARGS=()
+    if [ -n "$CHECKPOINT_SYNC_URL" ]; then
+      GRANDINE_EXTRA_ARGS+=(--checkpoint-sync-url="$CHECKPOINT_SYNC_URL")
+    fi
+    docker run -d --name "$CONTAINER_CL" \
+      --network "$DEVNET" \
+      -v "$CONFIG_DIR:/config:ro" \
+      -v "$CL_DATADIR:/data" \
+      -p $CL_HTTP:5052 -p $CL_P2P:9000/tcp -p $CL_P2P:9000/udp \
+      "$CL_IMAGE" \
+      --data-dir=/data \
+      --configuration-directory=/config \
+      --jwt-secret=/config/jwt.hex \
+      --eth1-rpc-urls="http://$CONTAINER_EL:8551" \
+      --listen-port=9000 \
+      --discovery-port=9000 \
+      --http-address=0.0.0.0 --http-port=5052 \
+      --enr-address="$MY_IP" --enr-tcp-port=9000 --enr-udp-port=9000 \
+      --boot-nodes="$BOOTNODES" \
+      "${GRANDINE_EXTRA_ARGS[@]}"
+    ;;
+
   *)
     echo "Unknown CL client: $CL"
-    echo "Supported: lighthouse, lodestar"
+    echo "Supported: lighthouse, lodestar, teku, prysm, nimbus, grandine"
     exit 1
     ;;
 esac
