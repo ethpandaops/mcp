@@ -242,7 +242,7 @@ func runSearchRunbooks(_ *cobra.Command, args []string) error {
 
 	for i, r := range filtered {
 		if i > 0 {
-			fmt.Println("\n===\n")
+			fmt.Print("\n===\n\n")
 		}
 
 		fmt.Printf("%s (score: %.2f)\n", r.Runbook.Name, r.Score)

@@ -53,6 +53,11 @@ func runSchema(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("no ClickHouse schema discovery configured")
 	}
 
+	// Wait for the initial schema fetch to complete (async in background).
+	if err := schemaClient.WaitForReady(ctx); err != nil {
+		return fmt.Errorf("waiting for schema: %w", err)
+	}
+
 	if len(args) == 0 {
 		return listTables(schemaClient)
 	}
