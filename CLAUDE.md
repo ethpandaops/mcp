@@ -35,13 +35,13 @@ make run-sse                  # Build + run with SSE transport on port 2480
 docker-compose up -d          # Full stack: MCP server + MinIO + sandbox builder
 
 # CLI (requires: make build-cli && make download-models)
-LD_LIBRARY_PATH=./models ./ep datasources           # List available datasources
-LD_LIBRARY_PATH=./models ./ep schema                 # Show ClickHouse table schemas
-LD_LIBRARY_PATH=./models ./ep docs                   # Show Python API docs
-LD_LIBRARY_PATH=./models ./ep execute --code '...'   # Execute Python in sandbox
-LD_LIBRARY_PATH=./models ./ep session list           # Manage sandbox sessions
-LD_LIBRARY_PATH=./models ./ep search examples "..."  # Semantic search examples
-LD_LIBRARY_PATH=./models ./ep search runbooks "..."  # Semantic search runbooks
+./ep datasources                          # List available datasources
+./ep schema                               # Show ClickHouse table schemas
+./ep docs                                 # Show Python API docs
+./ep execute --code 'print("hello")'      # Execute Python in sandbox
+./ep session list                         # Manage sandbox sessions
+./ep search examples "block count"        # Semantic search examples
+./ep search runbooks "finality delay"     # Semantic search runbooks
 
 # Evaluation tests (in tests/eval/)
 cd tests/eval && uv sync                          # Install Python dependencies

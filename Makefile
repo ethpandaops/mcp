@@ -114,6 +114,7 @@ version: ## Show version info
 	@echo "Build Time: $(BUILD_TIME)"
 
 download-models: $(EMBEDDING_MODEL_PATH) $(LLAMA_SO_PATH) ## Download embedding model and shared library
+	@ln -sf $(LLAMA_SO_PATH) libllama_go.so
 	@echo "All models downloaded to $(MODELS_DIR)"
 
 $(EMBEDDING_MODEL_PATH):
