@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -164,6 +165,53 @@ func (a *App) BuildLight(ctx context.Context) error {
 	return nil
 }
 
+// BuildWithSandbox initializes plugins, proxy, and sandbox — but skips
+// cartographoor and semantic search indices. Used by the CLI execute command.
+func (a *App) BuildWithSandbox(ctx context.Context) error {
+	a.log.Info("Building application dependencies (with sandbox)")
+
+	pluginReg, err := a.buildPluginRegistry()
+	if err != nil {
+		return fmt.Errorf("building plugin registry: %w", err)
+	}
+
+	a.PluginRegistry = pluginReg
+
+	sandboxSvc, err := sandbox.New(a.cfg.Sandbox, a.log)
+	if err != nil {
+		return fmt.Errorf("building sandbox: %w", err)
+	}
+
+	if err := sandboxSvc.Start(ctx); err != nil {
+		return fmt.Errorf("starting sandbox: %w", err)
+	}
+
+	a.Sandbox = sandboxSvc
+	a.log.WithField("backend", sandboxSvc.Name()).Info("Sandbox service started")
+
+	proxyClient := a.buildProxyClient()
+	if err := proxyClient.Start(ctx); err != nil {
+		a.stop(ctx)
+
+		return fmt.Errorf("starting proxy client: %w", err)
+	}
+
+	a.ProxyClient = proxyClient
+	a.log.WithField("url", proxyClient.URL()).Info("Proxy client connected")
+
+	a.injectProxyClient()
+
+	if err := a.PluginRegistry.StartAll(ctx); err != nil {
+		a.stop(ctx)
+
+		return fmt.Errorf("starting plugins: %w", err)
+	}
+
+	a.log.Info("All plugins started")
+
+	return nil
+}
+
 // Stop cleans up all started components in reverse order.
 func (a *App) Stop(ctx context.Context) error {
 	a.stop(ctx)
@@ -280,6 +328,47 @@ func (a *App) injectCartographoorClient() {
 			a.log.WithField("plugin", p.Name()).Debug("Injected cartographoor client into plugin")
 		}
 	}
+}
+
+// SandboxEnv builds credential-free environment variables for sandbox execution.
+// Includes proxy URL, datasource info, and S3 bucket — but no credentials.
+func (a *App) SandboxEnv() (map[string]string, error) {
+	env, err := a.PluginRegistry.SandboxEnv()
+	if err != nil {
+		return nil, fmt.Errorf("collecting sandbox env: %w", err)
+	}
+
+	env["ETHPANDAOPS_PROXY_URL"] = a.ProxyClient.URL()
+
+	if bucket := a.ProxyClient.S3Bucket(); bucket != "" {
+		env["ETHPANDAOPS_S3_BUCKET"] = bucket
+	}
+
+	if prefix := a.ProxyClient.S3PublicURLPrefix(); prefix != "" {
+		env["ETHPANDAOPS_S3_PUBLIC_URL_PREFIX"] = prefix
+	}
+
+	// Datasources are proxy-authoritative; override plugin-provided lists.
+	delete(env, "ETHPANDAOPS_CLICKHOUSE_DATASOURCES")
+	delete(env, "ETHPANDAOPS_PROMETHEUS_DATASOURCES")
+	delete(env, "ETHPANDAOPS_LOKI_DATASOURCES")
+
+	if ds := a.ProxyClient.ClickHouseDatasourceInfo(); len(ds) > 0 {
+		data, _ := json.Marshal(ds)
+		env["ETHPANDAOPS_CLICKHOUSE_DATASOURCES"] = string(data)
+	}
+
+	if ds := a.ProxyClient.PrometheusDatasourceInfo(); len(ds) > 0 {
+		data, _ := json.Marshal(ds)
+		env["ETHPANDAOPS_PROMETHEUS_DATASOURCES"] = string(data)
+	}
+
+	if ds := a.ProxyClient.LokiDatasourceInfo(); len(ds) > 0 {
+		data, _ := json.Marshal(ds)
+		env["ETHPANDAOPS_LOKI_DATASOURCES"] = string(data)
+	}
+
+	return env, nil
 }
 
 func (a *App) buildSearchIndices() error {
