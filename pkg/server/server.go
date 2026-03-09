@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/execsvc"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/observability"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/resource"
@@ -50,6 +51,7 @@ type service struct {
 	searchService        *searchsvc.Service
 	execService          *execsvc.Service
 	proxyService         proxy.Service
+	extensionRegistry    *extension.Registry
 	cleanup              func(context.Context) error
 	httpClient           *http.Client
 	mcpServer            *mcpserver.MCPServer
@@ -71,20 +73,22 @@ func NewService(
 	searchSvc *searchsvc.Service,
 	execSvc *execsvc.Service,
 	proxySvc proxy.Service,
+	extensionReg *extension.Registry,
 	cleanup func(context.Context) error,
 ) Service {
 	return &service{
-		log:              log.WithField("component", "server"),
-		cfg:              cfg,
-		toolRegistry:     toolRegistry,
-		resourceRegistry: resourceRegistry,
-		auth:             authSvc,
-		searchService:    searchSvc,
-		execService:      execSvc,
-		proxyService:     proxySvc,
-		cleanup:          cleanup,
-		httpClient:       &http.Client{Timeout: 0},
-		done:             make(chan struct{}),
+		log:               log.WithField("component", "server"),
+		cfg:               cfg,
+		toolRegistry:      toolRegistry,
+		resourceRegistry:  resourceRegistry,
+		auth:              authSvc,
+		searchService:     searchSvc,
+		execService:       execSvc,
+		proxyService:      proxySvc,
+		extensionRegistry: extensionReg,
+		cleanup:           cleanup,
+		httpClient:        &http.Client{Timeout: 0},
+		done:              make(chan struct{}),
 	}
 }
 

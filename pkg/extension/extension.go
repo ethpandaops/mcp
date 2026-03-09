@@ -42,6 +42,12 @@ type DefaultEnabled interface {
 	DefaultEnabled() bool
 }
 
+// EnabledAware is an optional interface for extensions that can be
+// initialized but still disabled via config.
+type EnabledAware interface {
+	Enabled() bool
+}
+
 // ResourceRegistry is the interface extensions use to register MCP resources.
 // This avoids a circular dependency between extension and resource packages.
 // pkg/resource.Registry satisfies this interface.

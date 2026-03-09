@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/execsvc"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/serverapi"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
@@ -271,6 +272,21 @@ func (s *service) handleAPIOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if extensionName := operationExtensionName(operationID); extensionName != "" &&
+		s.extensionRegistry != nil &&
+		s.extensionRegistry.Get(extensionName) != nil {
+		ext := s.extensionRegistry.Get(extensionName)
+		if enabledAware, ok := ext.(extension.EnabledAware); ok && !enabledAware.Enabled() {
+			writeAPIError(w, http.StatusNotFound, fmt.Sprintf("extension %q is not enabled", extensionName))
+			return
+		}
+
+		if !s.extensionRegistry.IsInitialized(extensionName) {
+			writeAPIError(w, http.StatusNotFound, fmt.Sprintf("extension %q is not enabled", extensionName))
+			return
+		}
+	}
+
 	targetURL := strings.TrimRight(s.proxyService.URL(), "/") + "/api/v1/operations/" + operationID
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
 	if err != nil {
@@ -360,4 +376,13 @@ func copyHeaders(dst, src http.Header) {
 			dst.Add(key, value)
 		}
 	}
+}
+
+func operationExtensionName(operationID string) string {
+	prefix, _, ok := strings.Cut(operationID, ".")
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(prefix)
 }

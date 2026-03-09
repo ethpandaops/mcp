@@ -32,6 +32,7 @@ proxy -> datasources
 - `config.yaml` configures the server.
 - `proxy-config.yaml` configures datasource credentials.
 - `ep init` writes the client config with `server.url`.
+- if server auth is enabled, authenticate the CLI with `mcp auth login --issuer <server-url> --client-id ep`
 
 ## Local Server + Hosted Proxy
 

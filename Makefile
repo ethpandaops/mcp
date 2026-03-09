@@ -78,7 +78,7 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 clean: ## Clean build artifacts
-	rm -f mcp ep proxy mcp-linux-amd64
+	rm -f mcp mcp-real ep proxy mcp-linux-amd64
 	rm -f libllama_go.so libllama_go.dylib
 	rm -f coverage.out coverage.html
 
@@ -125,7 +125,15 @@ install: install-mcp install-cli install-search-assets ## Install primary binari
 
 install-mcp: ## Install the MCP server binary to GOBIN
 	@mkdir -p $(GOBIN)
-	go build -ldflags "$(LDFLAGS)" -o $(GOBIN)/mcp ./cmd/mcp
+	go build -ldflags "$(LDFLAGS)" -o $(GOBIN)/mcp-real ./cmd/mcp
+	@printf '%s\n' \
+		'#!/bin/sh' \
+		'SCRIPT_DIR=$$(CDPATH= cd -- "$$(dirname -- "$$0")" && pwd)' \
+		'export LD_LIBRARY_PATH="$$SCRIPT_DIR$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"' \
+		'export DYLD_LIBRARY_PATH="$$SCRIPT_DIR$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
+		'exec "$$SCRIPT_DIR/mcp-real" "$$@"' \
+		> $(GOBIN)/mcp
+	@chmod +x $(GOBIN)/mcp
 
 install-cli: ## Install the CLI binary to GOBIN
 	@mkdir -p $(GOBIN)

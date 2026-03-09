@@ -39,6 +39,12 @@ The intended topology is:
 
 `ep` is a client. It does not embed the proxy or run sandboxes itself.
 
+If the server enables HTTP auth, authenticate the CLI first:
+
+```bash
+mcp auth login --issuer http://localhost:2480 --client-id ep
+```
+
 ## Claude Code
 
 Add to `~/.claude.json` under `mcpServers`:

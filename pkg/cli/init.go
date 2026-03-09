@@ -58,6 +58,7 @@ func runInit(_ *cobra.Command, _ []string) error {
 	}
 
 	fmt.Println("Point server.url at a running mcp server, then run `ep datasources`.")
+	fmt.Println("If the server requires auth, run `mcp auth login --issuer <server-url> --client-id ep` first.")
 
 	return nil
 }

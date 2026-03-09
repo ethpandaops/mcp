@@ -22,6 +22,9 @@ func New() *Extension {
 
 func (p *Extension) Name() string { return "ethnode" }
 
+// Enabled reports whether ethnode operations should be exposed.
+func (p *Extension) Enabled() bool { return p.cfg.IsEnabled() }
+
 func (p *Extension) Init(rawConfig []byte) error {
 	if len(rawConfig) == 0 {
 		return nil

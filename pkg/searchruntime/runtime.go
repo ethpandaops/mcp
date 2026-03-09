@@ -3,6 +3,8 @@ package searchruntime
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -25,15 +27,15 @@ func Build(
 	cfg config.SemanticSearchConfig,
 	extensionRegistry *extension.Registry,
 ) (*Runtime, error) {
-	if cfg.ModelPath == "" {
-		return nil, fmt.Errorf("semantic_search.model_path is required")
+	modelPath, searched := resolveModelPath(cfg.ModelPath)
+	if modelPath == "" {
+		return nil, fmt.Errorf(
+			"embedding model not found. looked in: %s. run 'make download-models' or 'make install'",
+			strings.Join(searched, ", "),
+		)
 	}
 
-	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("embedding model not found at %s (run 'make download-models' to fetch it)", cfg.ModelPath)
-	}
-
-	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
+	embedder, err := embedding.New(modelPath, cfg.GPULayers)
 	if err != nil {
 		return nil, fmt.Errorf("creating embedder: %w", err)
 	}
@@ -87,4 +89,64 @@ func (r *Runtime) Close() error {
 	}
 
 	return nil
+}
+
+func resolveModelPath(configuredPath string) (string, []string) {
+	return resolveModelPathWithExecutable(configuredPath, executableDir())
+}
+
+func resolveModelPathWithExecutable(configuredPath, execDir string) (string, []string) {
+	defaultModel := "models/MiniLM-L6-v2.Q8_0.gguf"
+	containerModel := "/usr/share/mcp/MiniLM-L6-v2.Q8_0.gguf"
+
+	candidates := make([]string, 0, 6)
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+
+		path = filepath.Clean(path)
+		for _, candidate := range candidates {
+			if candidate == path {
+				return
+			}
+		}
+
+		candidates = append(candidates, path)
+	}
+
+	if envPath := os.Getenv("ETHPANDAOPS_SEARCH_MODEL_PATH"); envPath != "" {
+		add(envPath)
+	}
+
+	if configuredPath != "" {
+		add(configuredPath)
+		if !filepath.IsAbs(configuredPath) && execDir != "" {
+			add(filepath.Join(execDir, configuredPath))
+		}
+	} else {
+		add(defaultModel)
+		if execDir != "" {
+			add(filepath.Join(execDir, defaultModel))
+		}
+		add(containerModel)
+	}
+
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, candidates
+		}
+	}
+
+	return "", candidates
+}
+
+func executableDir() string {
+	path, err := os.Executable()
+	if err != nil || path == "" {
+		return ""
+	}
+
+	return filepath.Dir(path)
 }

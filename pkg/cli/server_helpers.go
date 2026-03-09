@@ -11,12 +11,16 @@ import (
 	"strings"
 
 	clickhouseextension "github.com/ethpandaops/mcp/extensions/clickhouse"
+	authclient "github.com/ethpandaops/mcp/pkg/auth/client"
+	authstore "github.com/ethpandaops/mcp/pkg/auth/store"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/operations"
 	"github.com/ethpandaops/mcp/pkg/serverapi"
 )
 
 var serverHTTP = &http.Client{Timeout: 0}
+
+const serverAuthClientID = "ep"
 
 type rawServerResponse struct {
 	Body        []byte
@@ -54,6 +58,11 @@ func serverDo(
 		return nil, 0, nil, fmt.Errorf("creating request: %w", err)
 	}
 
+	authAttached, err := attachServerAuthorization(req, baseURL)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -69,7 +78,52 @@ func serverDo(
 		return nil, resp.StatusCode, resp.Header.Clone(), fmt.Errorf("reading response: %w", err)
 	}
 
+	if resp.StatusCode == http.StatusUnauthorized && !authAttached {
+		return nil, resp.StatusCode, resp.Header.Clone(), fmt.Errorf(
+			"server requires authentication. Run `mcp auth login --issuer %s --client-id %s` and retry",
+			baseURL,
+			serverAuthClientID,
+		)
+	}
+
 	return data, resp.StatusCode, resp.Header.Clone(), nil
+}
+
+func attachServerAuthorization(req *http.Request, baseURL string) (bool, error) {
+	if req.Header.Get("Authorization") != "" {
+		return true, nil
+	}
+
+	authClient := authclient.New(log, authclient.Config{
+		IssuerURL: baseURL,
+		ClientID:  serverAuthClientID,
+	})
+
+	credStore := authstore.New(log, authstore.Config{
+		AuthClient: authClient,
+	})
+
+	tokens, err := credStore.Load()
+	if err != nil {
+		return false, fmt.Errorf("loading stored credentials: %w", err)
+	}
+
+	if tokens == nil {
+		return false, nil
+	}
+
+	token, err := credStore.GetAccessToken()
+	if err != nil {
+		return false, fmt.Errorf(
+			"loading server access token: %w. Run `mcp auth login --issuer %s --client-id %s` to re-authenticate",
+			err,
+			baseURL,
+			serverAuthClientID,
+		)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	return true, nil
 }
 
 func serverGetJSON(ctx context.Context, path string, query url.Values, target any) error {

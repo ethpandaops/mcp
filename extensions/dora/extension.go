@@ -26,6 +26,9 @@ func New() *Extension {
 
 func (p *Extension) Name() string { return "dora" }
 
+// Enabled reports whether Dora operations should be exposed.
+func (p *Extension) Enabled() bool { return p.cfg.IsEnabled() }
+
 // DefaultEnabled implements extension.DefaultEnabled.
 // Dora is enabled by default since it requires no configuration.
 func (p *Extension) DefaultEnabled() bool { return true }

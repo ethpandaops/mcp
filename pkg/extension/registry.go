@@ -101,6 +101,20 @@ func (r *Registry) Get(name string) Extension {
 	return r.all[name]
 }
 
+// IsInitialized reports whether the named extension was initialized successfully.
+func (r *Registry) IsInitialized(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, ext := range r.initialized {
+		if ext.Name() == name {
+			return true
+		}
+	}
+
+	return false
+}
+
 // StartAll starts all initialized extensions.
 func (r *Registry) StartAll(ctx context.Context) error {
 	r.mu.RLock()

@@ -139,6 +139,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		searchSvc,
 		execSvc,
 		application.ProxyClient,
+		application.ExtensionRegistry,
 		cleanup,
 	), nil
 }
