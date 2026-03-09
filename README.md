@@ -73,8 +73,10 @@ Resources are available for getting started (`mcp://getting-started`), datasourc
 ## Development
 
 ```bash
-make build           # Build mcp and ep
-make install         # Install mcp and ep to GOPATH/bin
+make build           # Build mcp, ep, and ep-search
+make install         # Install mcp, ep, and ep-search to GOPATH/bin
+make download-models # Download search runtime assets for repo-local search use
+make install-search-assets # Install search runtime assets next to installed binaries
 make build-proxy     # Build standalone proxy binary
 make test            # Run tests
 make lint            # Run linters

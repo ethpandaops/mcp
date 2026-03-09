@@ -7,18 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/mcp/pkg/cartographoor"
 	"github.com/ethpandaops/mcp/pkg/config"
-	"github.com/ethpandaops/mcp/pkg/embedding"
 	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
-	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
-	"github.com/ethpandaops/mcp/runbooks"
 
 	clickhouseextension "github.com/ethpandaops/mcp/extensions/clickhouse"
 	doraextension "github.com/ethpandaops/mcp/extensions/dora"
@@ -36,10 +32,6 @@ type App struct {
 	Sandbox           sandbox.Service
 	ProxyClient       proxy.Client
 	Cartographoor     cartographoor.CartographoorClient
-	ExampleIndex      *resource.ExampleIndex
-	RunbookRegistry   *runbooks.Registry
-	RunbookIndex      *resource.RunbookIndex
-	Embedder          *embedding.Embedder
 }
 
 // New creates a new App.
@@ -121,13 +113,6 @@ func (a *App) Build(ctx context.Context) error {
 
 	// 6. Inject cartographoor client into extensions.
 	a.injectCartographoorClient()
-
-	// 7. Build semantic search indices.
-	if err := a.buildSearchIndices(); err != nil {
-		a.stop(ctx)
-
-		return fmt.Errorf("building search indices: %w", err)
-	}
 
 	return nil
 }
@@ -221,12 +206,6 @@ func (a *App) Stop(ctx context.Context) error {
 }
 
 func (a *App) stop(ctx context.Context) {
-	if a.ExampleIndex != nil {
-		_ = a.ExampleIndex.Close()
-	} else if a.Embedder != nil {
-		_ = a.Embedder.Close()
-	}
-
 	if a.Cartographoor != nil {
 		_ = a.Cartographoor.Stop()
 	}
@@ -370,53 +349,4 @@ func (a *App) SandboxEnv() (map[string]string, error) {
 	}
 
 	return env, nil
-}
-
-func (a *App) buildSearchIndices() error {
-	cfg := a.cfg.SemanticSearch
-	if cfg.ModelPath == "" {
-		return fmt.Errorf("semantic_search.model_path is required")
-	}
-
-	if _, err := os.Stat(cfg.ModelPath); os.IsNotExist(err) {
-		return fmt.Errorf("embedding model not found at %s (run 'make download-models' to fetch it)", cfg.ModelPath)
-	}
-
-	embedder, err := embedding.New(cfg.ModelPath, cfg.GPULayers)
-	if err != nil {
-		return fmt.Errorf("creating embedder: %w", err)
-	}
-
-	a.Embedder = embedder
-
-	exampleIndex, err := resource.NewExampleIndex(a.log, embedder, resource.GetQueryExamples(a.ExtensionRegistry))
-	if err != nil {
-		return fmt.Errorf("building example index: %w", err)
-	}
-
-	a.ExampleIndex = exampleIndex
-	a.log.Info("Semantic search example index built")
-
-	runbookReg, err := runbooks.NewRegistry(a.log)
-	if err != nil {
-		return fmt.Errorf("creating runbook registry: %w", err)
-	}
-
-	a.RunbookRegistry = runbookReg
-
-	if runbookReg.Count() == 0 {
-		a.log.Warn("No runbooks found, runbook search will be disabled")
-
-		return nil
-	}
-
-	runbookIndex, err := resource.NewRunbookIndex(a.log, embedder, runbookReg.All())
-	if err != nil {
-		return fmt.Errorf("building runbook index: %w", err)
-	}
-
-	a.RunbookIndex = runbookIndex
-	a.log.Info("Semantic search runbook index built")
-
-	return nil
 }

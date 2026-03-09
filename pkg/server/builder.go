@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
+	"github.com/ethpandaops/mcp/pkg/searchruntime"
 	"github.com/ethpandaops/mcp/pkg/tool"
 	"github.com/ethpandaops/mcp/runbooks"
 )
@@ -52,16 +53,24 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		return nil, err
 	}
 
+	searchRuntime, err := searchruntime.Build(b.log, b.cfg.SemanticSearch, application.ExtensionRegistry)
+	if err != nil {
+		_ = application.Stop(ctx)
+		return nil, fmt.Errorf("building search runtime: %w", err)
+	}
+
 	// Create auth service (MCP-server-specific).
 	authSvc, err := b.buildAuth()
 	if err != nil {
 		_ = application.Stop(ctx)
+		_ = searchRuntime.Close()
 
 		return nil, fmt.Errorf("building auth: %w", err)
 	}
 
 	if err := authSvc.Start(ctx); err != nil {
 		_ = application.Stop(ctx)
+		_ = searchRuntime.Close()
 
 		return nil, fmt.Errorf("starting auth: %w", err)
 	}
@@ -73,11 +82,11 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	// Create tool registry and register tools (MCP-server-specific).
 	toolReg := b.buildToolRegistry(
 		application.Sandbox,
-		application.ExampleIndex,
+		searchRuntime.ExampleIndex,
 		application.ExtensionRegistry,
 		application.ProxyClient,
-		application.RunbookRegistry,
-		application.RunbookIndex,
+		searchRuntime.RunbookRegistry,
+		searchRuntime.RunbookIndex,
 	)
 
 	// Create resource registry and register resources (MCP-server-specific).
