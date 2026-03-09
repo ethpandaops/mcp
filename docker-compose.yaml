@@ -5,8 +5,8 @@
 #   2. MCP server - connects to proxy, runs sandbox containers
 #
 # Usage:
-#   docker-compose up -d                        # Start all services
-#   docker-compose logs -f ethpandaops-mcp-server # View server logs
+#   docker compose up -d                        # Start all services
+#   docker compose logs -f ethpandaops-mcp-server # View server logs
 #
 # Optional environment variables (with defaults):
 #   MINIO_ACCESS_KEY    - MinIO access key (default: minioadmin)

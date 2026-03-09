@@ -77,20 +77,20 @@ type SearchRunbooksResponse struct {
 
 type Service struct {
 	exampleIndex ExampleSearcher
-	pluginReg    *extension.Registry
+	extensionReg *extension.Registry
 	runbookIndex RunbookSearcher
 	runbookReg   RunbookTagProvider
 }
 
 func New(
 	exampleIndex ExampleSearcher,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	runbookIndex RunbookSearcher,
 	runbookReg RunbookTagProvider,
 ) *Service {
 	return &Service{
 		exampleIndex: exampleIndex,
-		pluginReg:    pluginReg,
+		extensionReg: extensionReg,
 		runbookIndex: runbookIndex,
 		runbookReg:   runbookReg,
 	}
@@ -114,7 +114,7 @@ func (s *Service) SearchExamples(query, categoryFilter string, limit int) (*Sear
 
 	limit = clampSearchLimit(limit, MaxExampleSearchLimit)
 
-	examples := resource.GetQueryExamples(s.pluginReg)
+	examples := resource.GetQueryExamples(s.extensionReg)
 	categories := make([]string, 0, len(examples))
 	for key := range examples {
 		categories = append(categories, key)

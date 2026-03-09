@@ -29,26 +29,26 @@ type ExecuteRequest struct {
 }
 
 type Service struct {
-	log        logrus.FieldLogger
-	sandboxSvc sandbox.Service
-	cfg        *config.Config
-	pluginReg  *extension.Registry
-	proxySvc   proxy.Service
+	log          logrus.FieldLogger
+	sandboxSvc   sandbox.Service
+	cfg          *config.Config
+	extensionReg *extension.Registry
+	proxySvc     proxy.Service
 }
 
 func New(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxySvc proxy.Service,
 ) *Service {
 	return &Service{
-		log:        log.WithField("component", "exec-service"),
-		sandboxSvc: sandboxSvc,
-		cfg:        cfg,
-		pluginReg:  pluginReg,
-		proxySvc:   proxySvc,
+		log:          log.WithField("component", "exec-service"),
+		sandboxSvc:   sandboxSvc,
+		cfg:          cfg,
+		extensionReg: extensionReg,
+		proxySvc:     proxySvc,
 	}
 }
 
@@ -125,7 +125,7 @@ func (s *Service) DestroySession(ctx context.Context, sessionID, ownerID string)
 }
 
 func (s *Service) BuildSandboxEnv() (map[string]string, error) {
-	env, err := s.pluginReg.SandboxEnv()
+	env, err := s.extensionReg.SandboxEnv()
 	if err != nil {
 		return nil, fmt.Errorf("collecting sandbox env: %w", err)
 	}

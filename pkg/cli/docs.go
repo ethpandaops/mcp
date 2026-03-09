@@ -132,7 +132,7 @@ func showModule(docs map[string]types.ModuleDoc, name string) error {
 	return nil
 }
 
-// getAllPythonAPIDocs returns docs from all plugins (static data, no credentials needed).
+// getAllPythonAPIDocs returns docs from all extensions (static data, no credentials needed).
 func getAllPythonAPIDocs() map[string]types.ModuleDoc {
 	reg := extension.NewRegistry(log)
 	reg.Add(clickhouseextension.New())

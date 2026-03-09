@@ -36,13 +36,13 @@ type searchHandler struct {
 func NewSearchTool(
 	log logrus.FieldLogger,
 	exampleIndex *resource.ExampleIndex,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	runbookIndex *resource.RunbookIndex,
 	runbookReg *runbooks.Registry,
 ) Definition {
 	h := &searchHandler{
 		log:     log.WithField("tool", SearchToolName),
-		service: searchsvc.New(exampleIndex, pluginReg, runbookIndex, runbookReg),
+		service: searchsvc.New(exampleIndex, extensionReg, runbookIndex, runbookReg),
 	}
 
 	return Definition{

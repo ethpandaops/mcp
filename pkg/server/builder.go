@@ -50,7 +50,7 @@ func NewBuilder(log logrus.FieldLogger, cfg *config.Config) *Builder {
 func (b *Builder) Build(ctx context.Context) (Service, error) {
 	b.log.Info("Building MCP server dependencies")
 
-	// Build shared application components (plugins, sandbox, proxy, search indices).
+	// Build shared application components (extensions, sandbox, proxy, search indices).
 	application := app.New(b.log, b.cfg)
 	if err := application.Build(ctx); err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (b *Builder) buildAuth() (auth.SimpleService, error) {
 func (b *Builder) buildToolRegistry(
 	sandboxSvc sandbox.Service,
 	exampleIndex *resource.ExampleIndex,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxyClient proxy.Service,
 	runbookReg *runbooks.Registry,
 	runbookIndex *resource.RunbookIndex,
@@ -160,14 +160,14 @@ func (b *Builder) buildToolRegistry(
 	reg := tool.NewRegistry(b.log)
 
 	// Register execute_python tool.
-	reg.Register(tool.NewExecutePythonTool(b.log, sandboxSvc, b.cfg, pluginReg, proxyClient))
+	reg.Register(tool.NewExecutePythonTool(b.log, sandboxSvc, b.cfg, extensionReg, proxyClient))
 
 	// Register manage_session tool.
-	reg.Register(tool.NewManageSessionTool(b.log, sandboxSvc, b.cfg, pluginReg, proxyClient))
+	reg.Register(tool.NewManageSessionTool(b.log, sandboxSvc, b.cfg, extensionReg, proxyClient))
 
 	// Register unified search tool when either search index is available.
 	if exampleIndex != nil || (runbookIndex != nil && runbookReg != nil) {
-		reg.Register(tool.NewSearchTool(b.log, exampleIndex, pluginReg, runbookIndex, runbookReg))
+		reg.Register(tool.NewSearchTool(b.log, exampleIndex, extensionReg, runbookIndex, runbookReg))
 	}
 
 	b.log.WithField("tool_count", len(reg.List())).Info("Tool registry built")
@@ -178,31 +178,31 @@ func (b *Builder) buildToolRegistry(
 // buildResourceRegistry creates and populates the resource registry.
 func (b *Builder) buildResourceRegistry(
 	cartographoorClient cartographoor.CartographoorClient,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	toolReg tool.Registry,
 	proxyClient proxy.Service,
 ) resource.Registry {
 	reg := resource.NewRegistry(b.log)
 
 	// Register datasources resources (from extension registry and proxy client).
-	resource.RegisterDatasourcesResources(b.log, reg, pluginReg, proxyClient)
+	resource.RegisterDatasourcesResources(b.log, reg, extensionReg, proxyClient)
 
 	// Register examples resources (from extension registry).
-	resource.RegisterExamplesResources(b.log, reg, pluginReg)
+	resource.RegisterExamplesResources(b.log, reg, extensionReg)
 
 	// Register networks resources.
 	resource.RegisterNetworksResources(b.log, reg, cartographoorClient)
 
 	// Register Python library API resources (from extension registry).
-	resource.RegisterAPIResources(b.log, reg, pluginReg)
+	resource.RegisterAPIResources(b.log, reg, extensionReg)
 
 	// Register getting-started resource.
-	resource.RegisterGettingStartedResources(b.log, reg, toolReg, pluginReg)
+	resource.RegisterGettingStartedResources(b.log, reg, toolReg, extensionReg)
 
 	// Register extension-specific resources (e.g., clickhouse://tables).
-	for _, p := range pluginReg.Initialized() {
-		if err := p.RegisterResources(b.log, reg); err != nil {
-			b.log.WithError(err).WithField("extension", p.Name()).Warn("Failed to register extension resources")
+	for _, ext := range extensionReg.Initialized() {
+		if err := ext.RegisterResources(b.log, reg); err != nil {
+			b.log.WithError(err).WithField("extension", ext.Name()).Warn("Failed to register extension resources")
 		}
 	}
 

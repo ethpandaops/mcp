@@ -8,8 +8,7 @@ disable-model-invocation: true
 # Create New Extension
 
 Use this when adding a new integration like ClickHouse, Prometheus, Loki, Dora, or Ethnode.
-The repo still uses `plugin.go` filenames in extension folders, but the architecture is
-**extension + operations**, not plugins + bespoke proxy endpoints.
+The architecture is **extension + operations**, not plugins + bespoke proxy endpoints.
 
 ## Files To Create
 
@@ -18,7 +17,7 @@ Create the extension folder:
 ```text
 extensions/{name}/
 ├── config.go
-├── plugin.go
+├── extension.go
 ├── examples.go
 ├── examples.yaml
 └── python/{name}.py
@@ -65,7 +64,7 @@ Add these when needed:
 
 ## Extension Contract
 
-Implement `extension.Extension` from `pkg/extension/plugin.go`:
+Implement `extension.Extension` from `pkg/extension/extension.go`:
 - `Name`
 - `Init`
 - `ApplyDefaults`

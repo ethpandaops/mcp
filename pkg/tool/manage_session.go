@@ -68,12 +68,12 @@ func NewManageSessionTool(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxySvc proxy.Service,
 ) Definition {
 	h := &manageSessionHandler{
 		log:     log.WithField("tool", ManageSessionToolName),
-		service: execsvc.New(log, sandboxSvc, cfg, pluginReg, proxySvc),
+		service: execsvc.New(log, sandboxSvc, cfg, extensionReg, proxySvc),
 	}
 
 	return Definition{

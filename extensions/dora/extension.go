@@ -13,7 +13,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
-// Plugin implements the extension.Extension interface for Dora beacon chain explorer.
+// Extension implements the extension.Extension interface for Dora beacon chain explorer.
 type Extension struct {
 	cfg                 Config
 	cartographoorClient cartographoor.CartographoorClient

@@ -80,7 +80,7 @@ func NewExecutePythonTool(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxySvc proxy.Service,
 ) Definition {
 	return Definition{
@@ -108,7 +108,7 @@ func NewExecutePythonTool(
 				Required: []string{"code"},
 			},
 		},
-		Handler: newExecutePythonHandler(log, sandboxSvc, cfg, pluginReg, proxySvc),
+		Handler: newExecutePythonHandler(log, sandboxSvc, cfg, extensionReg, proxySvc),
 	}
 }
 
@@ -116,11 +116,11 @@ func newExecutePythonHandler(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxySvc proxy.Service,
 ) Handler {
 	handlerLog := log.WithField("tool", ExecutePythonToolName)
-	service := execsvc.New(log, sandboxSvc, cfg, pluginReg, proxySvc)
+	service := execsvc.New(log, sandboxSvc, cfg, extensionReg, proxySvc)
 
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		code, err := request.RequireString("code")

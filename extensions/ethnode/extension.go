@@ -10,7 +10,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
-// Plugin implements the extension.Extension interface for direct Ethereum node API access.
+// Extension implements the extension.Extension interface for direct Ethereum node API access.
 type Extension struct {
 	cfg Config
 }

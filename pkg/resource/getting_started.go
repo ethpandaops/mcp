@@ -65,7 +65,7 @@ func RegisterGettingStartedResources(
 	log logrus.FieldLogger,
 	reg Registry,
 	toolReg ToolLister,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 ) {
 	log = log.WithField("resource", "getting_started")
 
@@ -77,7 +77,7 @@ func RegisterGettingStartedResources(
 			mcp.WithMIMEType("text/markdown"),
 			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 1.0),
 		),
-		Handler: createGettingStartedHandler(reg, toolReg, pluginReg),
+		Handler: createGettingStartedHandler(reg, toolReg, extensionReg),
 	})
 
 	log.Debug("Registered getting-started resource")
@@ -88,7 +88,7 @@ func RegisterGettingStartedResources(
 func createGettingStartedHandler(
 	reg Registry,
 	toolReg ToolLister,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 ) ReadHandler {
 	return func(_ context.Context, _ string) (string, error) {
 		var sb strings.Builder
@@ -97,7 +97,7 @@ func createGettingStartedHandler(
 		sb.WriteString(gettingStartedHeader)
 
 		// Include extension-specific getting-started snippets.
-		snippets := pluginReg.GettingStartedSnippets()
+		snippets := extensionReg.GettingStartedSnippets()
 		if snippets != "" {
 			sb.WriteString(snippets)
 		}

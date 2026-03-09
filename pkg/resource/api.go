@@ -21,7 +21,7 @@ type APIDocResponse struct {
 
 // RegisterAPIResources registers the python://ethpandaops resource
 // with the registry.
-func RegisterAPIResources(log logrus.FieldLogger, reg Registry, pluginReg *extension.Registry) {
+func RegisterAPIResources(log logrus.FieldLogger, reg Registry, extensionReg *extension.Registry) {
 	log = log.WithField("resource", "api")
 
 	reg.RegisterStatic(StaticResource{
@@ -32,17 +32,17 @@ func RegisterAPIResources(log logrus.FieldLogger, reg Registry, pluginReg *exten
 			mcp.WithMIMEType("application/json"),
 			mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.9),
 		),
-		Handler: createAPIHandler(pluginReg),
+		Handler: createAPIHandler(extensionReg),
 	})
 
 	log.Debug("Registered API resources")
 }
 
-func createAPIHandler(pluginReg *extension.Registry) ReadHandler {
+func createAPIHandler(extensionReg *extension.Registry) ReadHandler {
 	return func(_ context.Context, _ string) (string, error) {
-		// Use AllPythonAPIDocs to include docs from all plugins,
+		// Use AllPythonAPIDocs to include docs from all extensions,
 		// not just initialized ones (API docs don't need credentials).
-		modules := pluginReg.AllPythonAPIDocs()
+		modules := extensionReg.AllPythonAPIDocs()
 
 		// Add platform-owned storage module.
 		modules["storage"] = types.ModuleDoc{

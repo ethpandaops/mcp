@@ -1,4 +1,4 @@
-.PHONY: build build-mcp build-cli build-search build-proxy install install-mcp install-cli install-search install-proxy install-search-assets test lint clean docker docker-push docker-sandbox test-sandbox run help download-models clean-models setup-hooks
+.PHONY: build build-mcp build-cli build-proxy install install-mcp install-cli install-proxy install-search-assets test lint clean docker docker-push docker-sandbox test-sandbox run help download-models clean-models setup-hooks
 
 # Embedding model and shared library configuration
 # Downloaded from HuggingFace and kelindar/search GitHub repo
@@ -39,16 +39,13 @@ GOBIN ?= $(shell go env GOPATH)/bin
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-build: build-mcp build-cli build-search ## Build primary binaries (mcp + ep + ep-search)
+build: build-mcp build-cli ## Build primary binaries (mcp + ep)
 
 build-mcp: ## Build the MCP server binary
 	go build -ldflags "$(LDFLAGS)" -o mcp ./cmd/mcp
 
 build-cli: ## Build the CLI binary
 	go build -ldflags "$(LDFLAGS)" -o ep ./cmd/cli
-
-build-search: ## Build the CLI search helper binary
-	go build -ldflags "$(LDFLAGS)" -o ep-search ./cmd/ep-search
 
 build-proxy: ## Build the standalone proxy binary
 	go build -ldflags "$(LDFLAGS)" -o proxy ./cmd/proxy
@@ -81,7 +78,7 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 clean: ## Clean build artifacts
-	rm -f mcp ep ep-search proxy mcp-linux-amd64
+	rm -f mcp ep proxy mcp-linux-amd64
 	rm -f libllama_go.so libllama_go.dylib
 	rm -f coverage.out coverage.html
 
@@ -115,16 +112,16 @@ run: build-mcp download-models ## Run the server with stdio transport
 run-sse: build-mcp ## Run the server with SSE transport
 	./mcp serve --transport sse --port 2480
 
-run-docker: docker ## Run with docker-compose
-	docker-compose up -d
+run-docker: docker ## Run with docker compose
+	docker compose up -d
 
-stop-docker: ## Stop docker-compose services
-	docker-compose down
+stop-docker: ## Stop docker compose services
+	docker compose down
 
-logs: ## View docker-compose logs
-	docker-compose logs -f mcp-server
+logs: ## View docker compose logs
+	docker compose logs -f mcp-server
 
-install: install-mcp install-cli install-search install-search-assets ## Install primary binaries to GOBIN
+install: install-mcp install-cli install-search-assets ## Install primary binaries and search assets to GOBIN
 
 install-mcp: ## Install the MCP server binary to GOBIN
 	@mkdir -p $(GOBIN)
@@ -133,10 +130,6 @@ install-mcp: ## Install the MCP server binary to GOBIN
 install-cli: ## Install the CLI binary to GOBIN
 	@mkdir -p $(GOBIN)
 	go build -ldflags "$(LDFLAGS)" -o $(GOBIN)/ep ./cmd/cli
-
-install-search: ## Install the CLI search helper to GOBIN
-	@mkdir -p $(GOBIN)
-	go build -ldflags "$(LDFLAGS)" -o $(GOBIN)/ep-search ./cmd/ep-search
 
 install-proxy: ## Install the standalone proxy binary to GOBIN
 	@mkdir -p $(GOBIN)

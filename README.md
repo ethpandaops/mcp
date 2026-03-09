@@ -26,7 +26,7 @@ The local stack runs:
 - `proxy` on port `18081`
 - `minio` on ports `31400` / `31401` by default
 
-By default `docker-compose` publishes those ports on `127.0.0.1` only. Override `MCP_SERVER_HOST`, `MCP_PROXY_HOST`, or `MINIO_HOST` if you intentionally want them exposed on another interface.
+By default `docker compose` publishes those ports on `127.0.0.1` only. Override `MCP_SERVER_HOST`, `MCP_PROXY_HOST`, or `MINIO_HOST` if you intentionally want them exposed on another interface.
 
 ## Deployment Modes
 
@@ -89,8 +89,8 @@ Resources are available for getting started (`mcp://getting-started`), datasourc
 ## Development
 
 ```bash
-make build           # Build mcp, ep, and support binaries/assets
-make install         # Install mcp, ep, and support binaries/assets to GOBIN
+make build           # Build mcp and ep
+make install         # Install mcp, ep, and local search assets to GOBIN
 make build-proxy     # Build standalone proxy binary
 make test            # Run tests
 make lint            # Run linters

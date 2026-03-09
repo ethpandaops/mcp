@@ -12,7 +12,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
-// Plugin implements the extension.Extension interface for Prometheus.
+// Extension implements the extension.Extension interface for Prometheus.
 type Extension struct {
 	cfg Config
 }

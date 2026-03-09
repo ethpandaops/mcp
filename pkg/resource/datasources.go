@@ -18,17 +18,17 @@ type DatasourcesJSONResponse struct {
 	Datasources []types.DatasourceInfo `json:"datasources"`
 }
 
-// DatasourceProvider provides datasource information from either plugins or proxy.
+// DatasourceProvider provides datasource information from either extensions or proxy.
 type DatasourceProvider struct {
-	pluginReg   *extension.Registry
-	proxyClient proxy.Service
+	extensionReg *extension.Registry
+	proxyClient  proxy.Service
 }
 
 // NewDatasourceProvider creates a new datasource provider.
-func NewDatasourceProvider(pluginReg *extension.Registry, proxyClient proxy.Service) *DatasourceProvider {
+func NewDatasourceProvider(extensionReg *extension.Registry, proxyClient proxy.Service) *DatasourceProvider {
 	return &DatasourceProvider{
-		pluginReg:   pluginReg,
-		proxyClient: proxyClient,
+		extensionReg: extensionReg,
+		proxyClient:  proxyClient,
 	}
 }
 
@@ -45,11 +45,11 @@ func (p *DatasourceProvider) DatasourceInfo() []types.DatasourceInfo {
 		return result
 	}
 
-	if p.pluginReg == nil {
+	if p.extensionReg == nil {
 		return nil
 	}
 
-	return p.pluginReg.DatasourceInfo()
+	return p.extensionReg.DatasourceInfo()
 }
 
 // RegisterDatasourcesResources registers the datasources:// resources
@@ -57,11 +57,11 @@ func (p *DatasourceProvider) DatasourceInfo() []types.DatasourceInfo {
 func RegisterDatasourcesResources(
 	log logrus.FieldLogger,
 	reg Registry,
-	pluginReg *extension.Registry,
+	extensionReg *extension.Registry,
 	proxyClient proxy.Service,
 ) {
 	log = log.WithField("resource", "datasources")
-	provider := NewDatasourceProvider(pluginReg, proxyClient)
+	provider := NewDatasourceProvider(extensionReg, proxyClient)
 
 	// datasources://list - all datasources
 	reg.RegisterStatic(StaticResource{
