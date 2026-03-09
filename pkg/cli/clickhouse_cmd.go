@@ -130,9 +130,7 @@ func printClickHouseJSON(data []byte, raw bool) error {
 
 	if raw {
 		matrix := make([][]string, 0, len(rows))
-		for _, row := range rows {
-			matrix = append(matrix, row)
-		}
+		matrix = append(matrix, rows...)
 
 		return printJSON(map[string]any{
 			"columns": columns,

@@ -8,12 +8,12 @@ import (
 )
 
 type OperationsHandler struct {
-	log         logrus.FieldLogger
-	clickhouse  *ClickHouseOperationsHandler
-	prometheus  *PrometheusOperationsHandler
-	loki        *LokiOperationsHandler
-	ethnode     *EthNodeOperationsHandler
-	dora        *DoraOperationsHandler
+	log        logrus.FieldLogger
+	clickhouse *ClickHouseOperationsHandler
+	prometheus *PrometheusOperationsHandler
+	loki       *LokiOperationsHandler
+	ethnode    *EthNodeOperationsHandler
+	dora       *DoraOperationsHandler
 }
 
 func NewOperationsHandler(
@@ -24,7 +24,7 @@ func NewOperationsHandler(
 	ethNodeConfig *EthNodeConfig,
 ) *OperationsHandler {
 	handler := &OperationsHandler{
-		log: log.WithField("handler", "operations"),
+		log:  log.WithField("handler", "operations"),
 		dora: NewDoraOperationsHandler(log),
 	}
 

@@ -131,7 +131,7 @@ func (h *DoraOperationsHandler) handleNetworkOverview(w http.ResponseWriter, r *
 		return
 	}
 
-	data, status, err := h.apiGet(r.Context(), baseURL, "/api/v1/epoch/head", nil)
+	data, _, err := h.apiGet(r.Context(), baseURL, "/api/v1/epoch/head", nil)
 	if err != nil {
 		data, status, err = h.apiGet(r.Context(), baseURL, "/api/v1/epoch/latest", nil)
 		if err != nil {
