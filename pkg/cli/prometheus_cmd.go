@@ -53,7 +53,7 @@ var promListDatasourcesCmd = &cobra.Command{
 	Use:   "list-datasources",
 	Short: "List available Prometheus datasources",
 	RunE: func(_ *cobra.Command, _ []string) error {
-		response, err := runProxyOperation("prometheus.list_datasources", map[string]any{})
+		response, err := runServerOperation("prometheus.list_datasources", map[string]any{})
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ var promQueryCmd = &cobra.Command{
 	Short: "Execute an instant PromQL query",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("prometheus.query", map[string]any{
+		response, err := runServerOperationRaw("prometheus.query", map[string]any{
 			"datasource": args[0],
 			"query":      args[1],
 			"time":       promQueryTime,
@@ -114,7 +114,7 @@ var promQueryRangeCmd = &cobra.Command{
 	Short: "Execute a range PromQL query",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("prometheus.query_range", map[string]any{
+		response, err := runServerOperationRaw("prometheus.query_range", map[string]any{
 			"datasource": args[0],
 			"query":      args[1],
 			"start":      promRangeStart,
@@ -138,7 +138,7 @@ var promLabelsCmd = &cobra.Command{
 	Short: "List all label names",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("prometheus.get_labels", map[string]any{
+		response, err := runServerOperationRaw("prometheus.get_labels", map[string]any{
 			"datasource": args[0],
 		})
 		if err != nil {
@@ -158,7 +158,7 @@ var promLabelValuesCmd = &cobra.Command{
 	Short: "Get all values for a label",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("prometheus.get_label_values", map[string]any{
+		response, err := runServerOperationRaw("prometheus.get_label_values", map[string]any{
 			"datasource": args[0],
 			"label":      args[1],
 		})

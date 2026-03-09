@@ -6,13 +6,10 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/ethpandaops/mcp/pkg/app"
-	"github.com/ethpandaops/mcp/pkg/config"
-	"github.com/ethpandaops/mcp/pkg/execsvc"
+	"github.com/ethpandaops/mcp/pkg/serverapi"
 )
 
 var (
@@ -57,22 +54,7 @@ func runExecute(_ *cobra.Command, _ []string) error {
 	}
 
 	ctx := context.Background()
-
-	cfg, err := config.Load(cfgFile)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	// Build app with sandbox + proxy + plugins (no embedding needed).
-	a := app.New(log, cfg)
-	if err := a.BuildWithSandbox(ctx); err != nil {
-		return fmt.Errorf("building app: %w", err)
-	}
-
-	defer func() { _ = a.Stop(ctx) }()
-
-	service := execsvc.New(log, a.Sandbox, cfg, a.ExtensionRegistry, a.ProxyClient)
-	result, err := service.Execute(ctx, execsvc.ExecuteRequest{
+	result, err := executeCodeRemotely(ctx, serverapi.ExecuteRequest{
 		Code:      code,
 		Timeout:   executeTimeout,
 		SessionID: executeSession,
@@ -100,8 +82,11 @@ func runExecute(_ *cobra.Command, _ []string) error {
 	}
 
 	if result.SessionID != "" {
-		fmt.Fprintf(os.Stderr, "[session] %s (ttl: %s)\n",
-			result.SessionID, result.SessionTTLRemaining.Round(time.Second))
+		ttl := result.SessionTTLRemaining
+		if ttl == "" {
+			ttl = "unknown"
+		}
+		fmt.Fprintf(os.Stderr, "[session] %s (ttl: %s)\n", result.SessionID, ttl)
 	}
 
 	if result.ExitCode != 0 {

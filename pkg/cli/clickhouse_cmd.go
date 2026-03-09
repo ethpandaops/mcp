@@ -35,15 +35,7 @@ var clickhouseListDatasourcesCmd = &cobra.Command{
 	Use:   "list-datasources",
 	Short: "List available ClickHouse clusters",
 	RunE: func(_ *cobra.Command, _ []string) error {
-		ctx := context.Background()
-
-		pc, cleanup, err := startProxy(ctx)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
-		response, err := proxyOperation(ctx, pc, "clickhouse.list_datasources", map[string]any{})
+		response, err := runServerOperation("clickhouse.list_datasources", map[string]any{})
 		if err != nil {
 			return err
 		}
@@ -110,13 +102,7 @@ var clickhouseQueryRawCmd = &cobra.Command{
 func runClickHouseOperation(operationID, cluster, sql string, raw bool) error {
 	ctx := context.Background()
 
-	pc, cleanup, err := startProxy(ctx)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	response, err := proxyOperationRaw(ctx, pc, operationID, map[string]any{
+	response, err := serverOperationRaw(ctx, operationID, map[string]any{
 		"cluster": cluster,
 		"sql":     sql,
 	})

@@ -21,11 +21,11 @@ type DatasourcesJSONResponse struct {
 // DatasourceProvider provides datasource information from either plugins or proxy.
 type DatasourceProvider struct {
 	pluginReg   *extension.Registry
-	proxyClient proxy.Client
+	proxyClient proxy.Service
 }
 
 // NewDatasourceProvider creates a new datasource provider.
-func NewDatasourceProvider(pluginReg *extension.Registry, proxyClient proxy.Client) *DatasourceProvider {
+func NewDatasourceProvider(pluginReg *extension.Registry, proxyClient proxy.Service) *DatasourceProvider {
 	return &DatasourceProvider{
 		pluginReg:   pluginReg,
 		proxyClient: proxyClient,
@@ -58,7 +58,7 @@ func RegisterDatasourcesResources(
 	log logrus.FieldLogger,
 	reg Registry,
 	pluginReg *extension.Registry,
-	proxyClient proxy.Client,
+	proxyClient proxy.Service,
 ) {
 	log = log.WithField("resource", "datasources")
 	provider := NewDatasourceProvider(pluginReg, proxyClient)

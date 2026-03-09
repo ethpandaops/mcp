@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/ethpandaops/mcp/pkg/configpath"
 )
 
 // Config is the main configuration structure.
@@ -22,6 +24,8 @@ type Config struct {
 	Storage        *StorageConfig       `yaml:"storage,omitempty"`
 	Observability  ObservabilityConfig  `yaml:"observability"`
 	SemanticSearch SemanticSearchConfig `yaml:"semantic_search"`
+
+	path string `yaml:"-"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -48,6 +52,7 @@ type ServerConfig struct {
 	Host      string `yaml:"host"`
 	Port      int    `yaml:"port"`
 	BaseURL   string `yaml:"base_url"`
+	URL       string `yaml:"url,omitempty"`
 	Transport string `yaml:"transport"`
 }
 
@@ -126,11 +131,9 @@ type ObservabilityConfig struct {
 }
 
 // ProxyConfig holds proxy connection configuration.
-// The MCP server always connects to a proxy server (local or remote) via this config.
-// Sandbox containers never receive credentials directly.
+// The MCP server always connects to a proxy server via this config.
 type ProxyConfig struct {
 	// URL is the base URL of the proxy server (e.g., http://localhost:18081).
-	// Required - the proxy must be running separately.
 	URL string `yaml:"url"`
 
 	// Auth configures authentication for the proxy.
@@ -149,16 +152,14 @@ type ProxyAuthConfig struct {
 
 // Load loads configuration from a YAML file with environment variable substitution.
 func Load(path string) (*Config, error) {
-	if path == "" {
-		path = os.Getenv("CONFIG_PATH")
-		if path == "" {
-			path = "config.yaml"
-		}
+	resolvedPath, err := configpath.ResolveAppConfigPath(path)
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+		return nil, fmt.Errorf("reading config file %s: %w", resolvedPath, err)
 	}
 
 	// Substitute environment variables
@@ -179,7 +180,14 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
+	cfg.path = resolvedPath
+
 	return &cfg, nil
+}
+
+// Path returns the resolved path this config was loaded from.
+func (c *Config) Path() string {
+	return c.path
 }
 
 // ExtensionConfigYAML returns the raw YAML bytes for a given extension name.
@@ -320,6 +328,10 @@ func (c *Config) Validate() error {
 	// Validate sandbox timeout is within bounds.
 	if c.Sandbox.Timeout > MaxSandboxTimeout {
 		return fmt.Errorf("sandbox.timeout cannot exceed %d seconds", MaxSandboxTimeout)
+	}
+
+	if c.Proxy.URL == "" {
+		return errors.New("proxy.url is required")
 	}
 
 	return nil

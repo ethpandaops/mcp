@@ -45,7 +45,7 @@ var ethNodeSyncingCmd = &cobra.Command{
 	Short: "Get beacon node sync status",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperation("ethnode.get_node_syncing", map[string]any{
+		response, err := runServerOperation("ethnode.get_node_syncing", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -73,7 +73,7 @@ var ethNodeVersionCmd = &cobra.Command{
 	Short: "Get node software version",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		beaconResp, err := runProxyOperation("ethnode.get_node_version", map[string]any{
+		beaconResp, err := runServerOperation("ethnode.get_node_version", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -82,7 +82,7 @@ var ethNodeVersionCmd = &cobra.Command{
 		}
 
 		if ethnodeJSON {
-			executionResp, execErr := runProxyOperation("ethnode.web3_client_version", map[string]any{
+			executionResp, execErr := runServerOperation("ethnode.web3_client_version", map[string]any{
 				"network":  args[0],
 				"instance": args[1],
 			})
@@ -101,7 +101,7 @@ var ethNodeVersionCmd = &cobra.Command{
 
 		fmt.Printf("CL: %v\n", nestedMap(beaconResp.Data, "data")["version"])
 
-		executionResp, execErr := runProxyOperation("ethnode.web3_client_version", map[string]any{
+		executionResp, execErr := runServerOperation("ethnode.web3_client_version", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -120,7 +120,7 @@ var ethNodeHealthCmd = &cobra.Command{
 	Short: "Get beacon node health status",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperation("ethnode.get_node_health", map[string]any{
+		response, err := runServerOperation("ethnode.get_node_health", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -155,7 +155,7 @@ var ethNodePeersCmd = &cobra.Command{
 	Short: "Get peer count",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperation("ethnode.get_peer_count", map[string]any{
+		response, err := runServerOperation("ethnode.get_peer_count", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -182,7 +182,7 @@ var ethNodeFinalityCmd = &cobra.Command{
 	Short: "Get finality checkpoints",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperation("ethnode.get_finality_checkpoints", map[string]any{
+		response, err := runServerOperation("ethnode.get_finality_checkpoints", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -213,7 +213,7 @@ var ethNodeHeaderCmd = &cobra.Command{
 			slot = args[2]
 		}
 
-		response, err := runProxyOperation("ethnode.get_beacon_headers", map[string]any{
+		response, err := runServerOperation("ethnode.get_beacon_headers", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 			"slot":     slot,
@@ -246,7 +246,7 @@ var ethNodeBlockNumberCmd = &cobra.Command{
 	Short: "Get latest execution layer block number",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperation("ethnode.eth_block_number", map[string]any{
+		response, err := runServerOperation("ethnode.eth_block_number", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 		})
@@ -280,7 +280,7 @@ Examples:
 			path = "/" + path
 		}
 
-		response, err := runProxyOperationRaw("ethnode.beacon_get", map[string]any{
+		response, err := runServerOperationRaw("ethnode.beacon_get", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 			"path":     path,
@@ -312,7 +312,7 @@ Examples:
 			}
 		}
 
-		response, err := runProxyOperationRaw("ethnode.execution_rpc", map[string]any{
+		response, err := runServerOperationRaw("ethnode.execution_rpc", map[string]any{
 			"network":  args[0],
 			"instance": args[1],
 			"method":   args[2],

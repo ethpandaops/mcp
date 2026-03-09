@@ -72,7 +72,7 @@ Returns matching runbooks with full content, prerequisites, and tags.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: config.yaml or $CONFIG_PATH)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: $ETHPANDAOPS_CONFIG, $EP_CONFIG, ~/.config/ethpandaops/config.yaml, or ./config.yaml)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "log level (debug, info, warn, error)")
 
 	rootCmd.AddCommand(searchExamplesCmd)

@@ -58,7 +58,7 @@ var lokiListDatasourcesCmd = &cobra.Command{
 	Use:   "list-datasources",
 	Short: "List available Loki datasources",
 	RunE: func(_ *cobra.Command, _ []string) error {
-		response, err := runProxyOperation("loki.list_datasources", map[string]any{})
+		response, err := runServerOperation("loki.list_datasources", map[string]any{})
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ var lokiQueryCmd = &cobra.Command{
 	Short: "Execute a LogQL range query",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("loki.query", map[string]any{
+		response, err := runServerOperationRaw("loki.query", map[string]any{
 			"datasource": args[0],
 			"query":      args[1],
 			"limit":      lokiLimit,
@@ -122,7 +122,7 @@ var lokiQueryInstantCmd = &cobra.Command{
 	Short: "Execute an instant LogQL query",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("loki.query_instant", map[string]any{
+		response, err := runServerOperationRaw("loki.query_instant", map[string]any{
 			"datasource": args[0],
 			"query":      args[1],
 			"limit":      lokiLimit,
@@ -146,7 +146,7 @@ var lokiLabelsCmd = &cobra.Command{
 	Short: "List all label names",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("loki.get_labels", map[string]any{
+		response, err := runServerOperationRaw("loki.get_labels", map[string]any{
 			"datasource": args[0],
 			"start":      lokiStart,
 			"end":        lokiEnd,
@@ -168,7 +168,7 @@ var lokiLabelValuesCmd = &cobra.Command{
 	Short: "Get all values for a label",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
-		response, err := runProxyOperationRaw("loki.get_label_values", map[string]any{
+		response, err := runServerOperationRaw("loki.get_label_values", map[string]any{
 			"datasource": args[0],
 			"label":      args[1],
 			"start":      lokiStart,

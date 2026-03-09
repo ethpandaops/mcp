@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/ethpandaops/mcp/pkg/configpath"
 	"github.com/ethpandaops/mcp/pkg/proxy/handlers"
 )
 
@@ -332,16 +333,14 @@ var envVarWithDefaultPattern = regexp.MustCompile(`\$\{([^}:]+)(?::-([^}]*))?\}`
 
 // LoadServerConfig loads a proxy server config from a YAML file.
 func LoadServerConfig(path string) (*ServerConfig, error) {
-	if path == "" {
-		path = os.Getenv("CONFIG_PATH")
-		if path == "" {
-			path = "proxy-config.yaml"
-		}
+	resolvedPath, err := configpath.ResolveProxyConfigPath(path, "")
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+		return nil, fmt.Errorf("reading config file %s: %w", resolvedPath, err)
 	}
 
 	// Substitute environment variables.

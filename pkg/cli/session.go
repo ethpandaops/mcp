@@ -6,10 +6,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/ethpandaops/mcp/pkg/app"
-	"github.com/ethpandaops/mcp/pkg/config"
-	"github.com/ethpandaops/mcp/pkg/execsvc"
 )
 
 var sessionJSON bool
@@ -54,55 +50,28 @@ func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "Output in JSON format")
 }
 
-func buildSandboxApp(ctx context.Context) (*app.App, *config.Config, error) {
-	cfg, err := config.Load(cfgFile)
-	if err != nil {
-		return nil, nil, fmt.Errorf("loading config: %w", err)
-	}
-
-	a := app.New(log, cfg)
-	if err := a.BuildWithSandbox(ctx); err != nil {
-		return nil, nil, fmt.Errorf("building app: %w", err)
-	}
-
-	return a, cfg, nil
-}
-
 func runSessionList(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
-
-	a, _, err := buildSandboxApp(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = a.Stop(ctx) }()
-
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
-	if !service.SessionsEnabled() {
-		return fmt.Errorf("sessions are not enabled")
-	}
-
-	sessions, _, err := service.ListSessions(ctx, "")
+	response, err := listSessions(ctx)
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 
 	if sessionJSON {
-		return printJSON(map[string]any{"sessions": sessions})
+		return printJSON(response)
 	}
 
-	if len(sessions) == 0 {
+	if len(response.Sessions) == 0 {
 		fmt.Println("No active sessions.")
 
 		return nil
 	}
 
-	for _, s := range sessions {
+	for _, s := range response.Sessions {
 		fmt.Printf("  %-36s  created=%s  ttl=%s  files=%d\n",
-			s.ID,
+			s.SessionID,
 			s.CreatedAt.Format(time.RFC3339),
-			s.TTLRemaining.Round(time.Second),
+			s.TTLRemaining,
 			len(s.WorkspaceFiles),
 		)
 	}
@@ -112,45 +81,23 @@ func runSessionList(_ *cobra.Command, _ []string) error {
 
 func runSessionCreate(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
-
-	a, _, err := buildSandboxApp(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = a.Stop(ctx) }()
-
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
-	if !service.SessionsEnabled() {
-		return fmt.Errorf("sessions are not enabled")
-	}
-
-	sessionID, err := service.CreateSession(ctx, "")
+	response, err := createSession(ctx)
 	if err != nil {
 		return fmt.Errorf("creating session: %w", err)
 	}
 
 	if sessionJSON {
-		return printJSON(map[string]string{"session_id": sessionID})
+		return printJSON(response)
 	}
 
-	fmt.Println(sessionID)
+	fmt.Println(response.SessionID)
 
 	return nil
 }
 
 func runSessionDestroy(_ *cobra.Command, args []string) error {
 	ctx := context.Background()
-
-	a, _, err := buildSandboxApp(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = a.Stop(ctx) }()
-
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
-	if err := service.DestroySession(ctx, args[0], ""); err != nil {
+	if err := destroySession(ctx, args[0]); err != nil {
 		return fmt.Errorf("destroying session: %w", err)
 	}
 

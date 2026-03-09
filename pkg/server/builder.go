@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -10,11 +11,13 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/cartographoor"
 	"github.com/ethpandaops/mcp/pkg/config"
+	"github.com/ethpandaops/mcp/pkg/execsvc"
 	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 	"github.com/ethpandaops/mcp/pkg/searchruntime"
+	"github.com/ethpandaops/mcp/pkg/searchsvc"
 	"github.com/ethpandaops/mcp/pkg/tool"
 	"github.com/ethpandaops/mcp/runbooks"
 )
@@ -97,15 +100,46 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		application.ProxyClient,
 	)
 
+	searchSvc := searchsvc.New(
+		searchRuntime.ExampleIndex,
+		application.ExtensionRegistry,
+		searchRuntime.RunbookIndex,
+		searchRuntime.RunbookRegistry,
+	)
+
+	execSvc := execsvc.New(
+		b.log,
+		application.Sandbox,
+		b.cfg,
+		application.ExtensionRegistry,
+		application.ProxyClient,
+	)
+
+	cleanup := func(stopCtx context.Context) error {
+		var errs []error
+
+		if err := searchRuntime.Close(); err != nil {
+			errs = append(errs, err)
+		}
+
+		if err := application.Stop(stopCtx); err != nil {
+			errs = append(errs, err)
+		}
+
+		return errors.Join(errs...)
+	}
+
 	// Create and return the server service.
 	return NewService(
 		b.log,
 		b.cfg.Server,
-		b.cfg.Auth,
 		toolReg,
 		resourceReg,
-		application.Sandbox,
 		authSvc,
+		searchSvc,
+		execSvc,
+		application.ProxyClient,
+		cleanup,
 	), nil
 }
 
@@ -146,7 +180,7 @@ func (b *Builder) buildResourceRegistry(
 	cartographoorClient cartographoor.CartographoorClient,
 	pluginReg *extension.Registry,
 	toolReg tool.Registry,
-	proxyClient proxy.Client,
+	proxyClient proxy.Service,
 ) resource.Registry {
 	reg := resource.NewRegistry(b.log)
 
