@@ -12,9 +12,9 @@ Add a datasource plugin following the existing patterns.
 ## Files to Create
 
 ```
-plugins/{name}/
+extensions/{name}/
 ├── config.go        # Config struct + Validate() + ApplyDefaults()
-├── plugin.go        # Implements plugin.Plugin interface
+├── extension.go        # Implements extension.Plugin interface
 ├── examples.go      # Embeds examples.yaml
 ├── examples.yaml    # Query examples
 └── python/{name}.py # Sandbox module (connects via proxy)
@@ -25,11 +25,11 @@ Plus:
 
 ## Templates
 
-Copy from `plugins/prometheus/` for a simple plugin, or `plugins/clickhouse/` for one with schema discovery.
+Copy from `extensions/prometheus/` for a simple plugin, or `extensions/clickhouse/` for one with schema discovery.
 
 ## Registration Steps
 
-1. **pkg/app/app.go** - Import and add `reg.Add({name}plugin.New())` in `buildPluginRegistry()`
+1. **pkg/app/app.go** - Import and add `reg.Add({name}extension.New())` in `buildExtensionRegistry()`
 2. **pkg/proxy/proxy.go** - Add field to `Options` struct
 3. **pkg/proxy/proxy.go** - Register handler in `Start()`
 4. **sandbox/ethpandaops/ethpandaops/__init__.py** - Add to lazy imports
@@ -44,7 +44,7 @@ Copy from `plugins/prometheus/` for a simple plugin, or `plugins/clickhouse/` fo
 
 ## Checklist
 
-- [ ] Implements all `plugin.Plugin` methods (see `pkg/plugin/plugin.go`)
+- [ ] Implements all `extension.Plugin` methods (see `pkg/extension/extension.go`)
 - [ ] Proxy handler follows pattern in `pkg/proxy/handlers/prometheus.go`
 - [ ] `make lint && make test` pass
 - [ ] `make docker-sandbox` builds

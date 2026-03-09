@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
@@ -20,12 +20,12 @@ type DatasourcesJSONResponse struct {
 
 // DatasourceProvider provides datasource information from either plugins or proxy.
 type DatasourceProvider struct {
-	pluginReg   *plugin.Registry
+	pluginReg   *extension.Registry
 	proxyClient proxy.Client
 }
 
 // NewDatasourceProvider creates a new datasource provider.
-func NewDatasourceProvider(pluginReg *plugin.Registry, proxyClient proxy.Client) *DatasourceProvider {
+func NewDatasourceProvider(pluginReg *extension.Registry, proxyClient proxy.Client) *DatasourceProvider {
 	return &DatasourceProvider{
 		pluginReg:   pluginReg,
 		proxyClient: proxyClient,
@@ -33,7 +33,7 @@ func NewDatasourceProvider(pluginReg *plugin.Registry, proxyClient proxy.Client)
 }
 
 // DatasourceInfo returns datasource info from the proxy.
-// If the proxy is unavailable, it falls back to plugin-derived info.
+// If the proxy is unavailable, it falls back to extension-derived info.
 func (p *DatasourceProvider) DatasourceInfo() []types.DatasourceInfo {
 	if p.proxyClient != nil {
 		var result []types.DatasourceInfo
@@ -57,7 +57,7 @@ func (p *DatasourceProvider) DatasourceInfo() []types.DatasourceInfo {
 func RegisterDatasourcesResources(
 	log logrus.FieldLogger,
 	reg Registry,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	proxyClient proxy.Client,
 ) {
 	log = log.WithField("resource", "datasources")

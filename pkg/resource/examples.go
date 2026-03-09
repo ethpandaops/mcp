@@ -8,12 +8,12 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/types"
 )
 
 // RegisterExamplesResources registers the examples://queries resource.
-func RegisterExamplesResources(log logrus.FieldLogger, reg Registry, pluginReg *plugin.Registry) {
+func RegisterExamplesResources(log logrus.FieldLogger, reg Registry, pluginReg *extension.Registry) {
 	log = log.WithField("resource", "examples")
 
 	reg.RegisterStatic(StaticResource{
@@ -30,7 +30,7 @@ func RegisterExamplesResources(log logrus.FieldLogger, reg Registry, pluginReg *
 	log.Debug("Registered examples resources")
 }
 
-func createExamplesHandler(pluginReg *plugin.Registry) ReadHandler {
+func createExamplesHandler(pluginReg *extension.Registry) ReadHandler {
 	return func(_ context.Context, _ string) (string, error) {
 		// Use AllExamples to include examples from all plugins,
 		// not just initialized ones (examples don't need credentials).
@@ -47,6 +47,6 @@ func createExamplesHandler(pluginReg *plugin.Registry) ReadHandler {
 
 // GetQueryExamples returns all query examples from ALL registered plugins,
 // regardless of initialization status. Examples are static embedded data.
-func GetQueryExamples(pluginReg *plugin.Registry) map[string]types.ExampleCategory {
+func GetQueryExamples(pluginReg *extension.Registry) map[string]types.ExampleCategory {
 	return pluginReg.AllExamples()
 }

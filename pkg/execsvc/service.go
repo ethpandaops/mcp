@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/mcp/pkg/config"
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 	"github.com/ethpandaops/mcp/pkg/types"
@@ -32,7 +32,7 @@ type Service struct {
 	log        logrus.FieldLogger
 	sandboxSvc sandbox.Service
 	cfg        *config.Config
-	pluginReg  *plugin.Registry
+	pluginReg  *extension.Registry
 	proxySvc   proxy.Service
 }
 
@@ -40,7 +40,7 @@ func New(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	proxySvc proxy.Service,
 ) *Service {
 	return &Service{

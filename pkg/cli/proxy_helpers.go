@@ -121,6 +121,18 @@ func proxyOperation(ctx context.Context, pc proxy.Client, operationID string, ar
 	return &response, nil
 }
 
+func runProxyOperation(operationID string, args map[string]any) (*operations.Response, error) {
+	ctx := context.Background()
+
+	pc, cleanup, err := startProxy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return proxyOperation(ctx, pc, operationID, args)
+}
+
 // dsHeader returns a header map with the X-Datasource header set.
 func dsHeader(name string) map[string]string {
 	return map[string]string{"X-Datasource": name}

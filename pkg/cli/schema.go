@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	clickhouseextension "github.com/ethpandaops/mcp/extensions/clickhouse"
 	"github.com/ethpandaops/mcp/pkg/config"
-	clickhouseplugin "github.com/ethpandaops/mcp/plugins/clickhouse"
 )
 
 var schemaJSON bool
@@ -65,8 +65,8 @@ func runSchema(_ *cobra.Command, args []string) error {
 	return showTable(schemaClient, args[0])
 }
 
-func buildSchemaClient(ctx context.Context, cfg *config.Config) (clickhouseplugin.ClickHouseSchemaClient, func(), error) {
-	// Build plugin registry.
+func buildSchemaClient(ctx context.Context, cfg *config.Config) (clickhouseextension.ClickHouseSchemaClient, func(), error) {
+	// Build extension registry.
 	a, err := buildLightApp(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
@@ -74,21 +74,21 @@ func buildSchemaClient(ctx context.Context, cfg *config.Config) (clickhouseplugi
 
 	cleanup := func() { _ = a.Stop(ctx) }
 
-	// Find the clickhouse plugin and get its schema client.
-	p := a.PluginRegistry.Get("clickhouse")
+	// Find the ClickHouse extension and get its schema client.
+	p := a.ExtensionRegistry.Get("clickhouse")
 	if p == nil {
 		return nil, cleanup, nil
 	}
 
-	chPlugin, ok := p.(*clickhouseplugin.Plugin)
+	chExtension, ok := p.(*clickhouseextension.Extension)
 	if !ok {
 		return nil, cleanup, nil
 	}
 
-	return chPlugin.SchemaClient(), cleanup, nil
+	return chExtension.SchemaClient(), cleanup, nil
 }
 
-func listTables(client clickhouseplugin.ClickHouseSchemaClient) error {
+func listTables(client clickhouseextension.ClickHouseSchemaClient) error {
 	allTables := client.GetAllTables()
 
 	if schemaJSON {
@@ -122,7 +122,7 @@ func listTables(client clickhouseplugin.ClickHouseSchemaClient) error {
 	return nil
 }
 
-func showTable(client clickhouseplugin.ClickHouseSchemaClient, tableName string) error {
+func showTable(client clickhouseextension.ClickHouseSchemaClient, tableName string) error {
 	schema, clusterName, found := client.GetTable(tableName)
 
 	// Try case-insensitive match.

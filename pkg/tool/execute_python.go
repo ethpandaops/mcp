@@ -14,7 +14,7 @@ import (
 	"github.com/ethpandaops/mcp/pkg/auth"
 	"github.com/ethpandaops/mcp/pkg/config"
 	"github.com/ethpandaops/mcp/pkg/execsvc"
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
 )
@@ -80,7 +80,7 @@ func NewExecutePythonTool(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	proxySvc proxy.Service,
 ) Definition {
 	return Definition{
@@ -116,7 +116,7 @@ func newExecutePythonHandler(
 	log logrus.FieldLogger,
 	sandboxSvc sandbox.Service,
 	cfg *config.Config,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	proxySvc proxy.Service,
 ) Handler {
 	handlerLog := log.WithField("tool", ExecutePythonToolName)

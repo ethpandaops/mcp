@@ -77,7 +77,11 @@ func NewClickHouseOperationsHandler(log logrus.FieldLogger, configs []ClickHouse
 }
 
 func (h *ClickHouseOperationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch strings.TrimPrefix(r.URL.Path, "/api/v1/operations/") {
+	h.HandleOperation(strings.TrimPrefix(r.URL.Path, "/api/v1/operations/"), w, r)
+}
+
+func (h *ClickHouseOperationsHandler) HandleOperation(operationID string, w http.ResponseWriter, r *http.Request) bool {
+	switch operationID {
 	case "clickhouse.list_datasources":
 		h.handleListDatasources(w)
 	case "clickhouse.query":
@@ -85,8 +89,10 @@ func (h *ClickHouseOperationsHandler) ServeHTTP(w http.ResponseWriter, r *http.R
 	case "clickhouse.query_raw":
 		h.handleQuery(w, r, true)
 	default:
-		http.NotFound(w, r)
+		return false
 	}
+
+	return true
 }
 
 func (h *ClickHouseOperationsHandler) handleListDatasources(w http.ResponseWriter) {
@@ -99,7 +105,7 @@ func (h *ClickHouseOperationsHandler) handleListDatasources(w http.ResponseWrite
 		})
 	}
 
-	h.writeJSON(w, http.StatusOK, operations.Response{
+	writeOperationResponse(h.log, w, http.StatusOK, operations.Response{
 		Kind: operations.ResultKindObject,
 		Data: map[string]any{
 			"datasources": items,
@@ -108,9 +114,9 @@ func (h *ClickHouseOperationsHandler) handleListDatasources(w http.ResponseWrite
 }
 
 func (h *ClickHouseOperationsHandler) handleQuery(w http.ResponseWriter, r *http.Request, raw bool) {
-	var req operations.Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+	req, err := decodeOperationRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -148,7 +154,7 @@ func (h *ClickHouseOperationsHandler) handleQuery(w http.ResponseWriter, r *http
 			columns = append(columns, meta.Name)
 		}
 
-		h.writeJSON(w, http.StatusOK, operations.Response{
+		writeOperationResponse(h.log, w, http.StatusOK, operations.Response{
 			Kind:        operations.ResultKindTable,
 			RowEncoding: operations.RowEncodingArray,
 			Columns:     columns,
@@ -175,7 +181,7 @@ func (h *ClickHouseOperationsHandler) handleQuery(w http.ResponseWriter, r *http
 		columns = append(columns, meta.Name)
 	}
 
-	h.writeJSON(w, http.StatusOK, operations.Response{
+	writeOperationResponse(h.log, w, http.StatusOK, operations.Response{
 		Kind:        operations.ResultKindTable,
 		RowEncoding: operations.RowEncodingObject,
 		Columns:     columns,
@@ -274,14 +280,6 @@ func (h *ClickHouseOperationsHandler) executeQuery(
 	}
 
 	return body, http.StatusOK, nil
-}
-
-func (h *ClickHouseOperationsHandler) writeJSON(w http.ResponseWriter, status int, response operations.Response) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.WithError(err).Error("Failed to encode operation response")
-	}
 }
 
 func formatParamValue(value any) string {

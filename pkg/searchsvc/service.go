@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/runbooks"
 )
@@ -77,14 +77,14 @@ type SearchRunbooksResponse struct {
 
 type Service struct {
 	exampleIndex ExampleSearcher
-	pluginReg    *plugin.Registry
+	pluginReg    *extension.Registry
 	runbookIndex RunbookSearcher
 	runbookReg   RunbookTagProvider
 }
 
 func New(
 	exampleIndex ExampleSearcher,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	runbookIndex RunbookSearcher,
 	runbookReg RunbookTagProvider,
 ) *Service {

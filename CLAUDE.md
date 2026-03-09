@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ethpandaops/mcp is an MCP (Model Context Protocol) server that provides AI assistants with Ethereum network analytics capabilities. It enables agents to execute Python code in sandboxed containers with access to ClickHouse blockchain data, Prometheus metrics, Loki logs, and S3-compatible storage for outputs.
 
-The server uses a **plugin architecture** where each datasource (ClickHouse, Prometheus, Loki, Dora) is a self-contained plugin. All datasource access flows through a separate **credential proxy** — the MCP server never holds datasource credentials directly.
+The server uses a **plugin architecture** where each datasource (ClickHouse, Prometheus, Loki, Dora) is a self-contained extension. All datasource access flows through a separate **credential proxy** — the MCP server never holds datasource credentials directly.
 
 ## Commands
 
@@ -59,7 +59,7 @@ uv run python -m scripts.repl                      # Interactive REPL
 - **CLI** (`pkg/cli/`, `cmd/cli/`): Direct command-line interface — same capabilities as MCP server without the protocol layer
 - **Credential proxy** (`pkg/proxy/`, `cmd/proxy/`): Trust boundary — holds all datasource + S3 credentials, proxies all data access. Runs as a separate binary (`cmd/proxy/`)
 - **Sandbox** (`pkg/sandbox/`): Data plane — executes Python in isolated containers (Docker for dev, gVisor for production)
-- **Plugins** (`plugins/`): Per-datasource packages — config, schema discovery, resources, examples, Python API docs
+- **Plugins** (`extensions/`): Per-datasource packages — config, schema discovery, resources, examples, Python API docs
 
 ### Data Flow
 
@@ -77,7 +77,7 @@ Five compiled-in plugins registered in `pkg/app/app.go`:
 - `dora` — Beacon chain explorer (auto-enabled via `DefaultEnabled` interface, needs no config)
 - `ethnode` — Direct Ethereum node RPC access
 
-Each plugin implements `plugin.Plugin` (`pkg/plugin/plugin.go`). Optional interfaces:
+Each plugin implements `extension.Plugin` (`pkg/extension/extension.go`). Optional interfaces:
 - `ProxyAware` — receives proxy client for credential-proxied operations
 - `CartographoorAware` — receives network discovery client
 - `DefaultEnabled` — activates without explicit config
@@ -190,7 +190,7 @@ pkg/
   config/          # Configuration loading and validation
   observability/   # Prometheus metrics
   types/           # Shared types (DatasourceInfo, ExampleCategory, ModuleDoc)
-plugins/
+extensions/
   clickhouse/      # ClickHouse plugin (schema discovery, examples, Python module)
   prometheus/      # Prometheus plugin
   loki/            # Loki plugin

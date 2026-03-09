@@ -67,6 +67,14 @@ def invoke_dataframe(operation: str, args: dict[str, Any] | None = None) -> pd.D
     return pd.DataFrame(rows, columns=columns or None)
 
 
+def invoke_data(operation: str, args: dict[str, Any] | None = None) -> Any:
+    response = invoke(operation, args)
+    if response.get("kind") != "object":
+        raise ValueError(f"Operation {operation} did not return an object result")
+
+    return response.get("data")
+
+
 def invoke_raw_table(
     operation: str, args: dict[str, Any] | None = None
 ) -> tuple[list[tuple], list[str]]:

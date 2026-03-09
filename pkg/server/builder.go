@@ -8,8 +8,9 @@ import (
 
 	"github.com/ethpandaops/mcp/pkg/app"
 	"github.com/ethpandaops/mcp/pkg/auth"
+	"github.com/ethpandaops/mcp/pkg/cartographoor"
 	"github.com/ethpandaops/mcp/pkg/config"
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/proxy"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/sandbox"
@@ -73,7 +74,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	toolReg := b.buildToolRegistry(
 		application.Sandbox,
 		application.ExampleIndex,
-		application.PluginRegistry,
+		application.ExtensionRegistry,
 		application.ProxyClient,
 		application.RunbookRegistry,
 		application.RunbookIndex,
@@ -82,7 +83,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	// Create resource registry and register resources (MCP-server-specific).
 	resourceReg := b.buildResourceRegistry(
 		application.Cartographoor,
-		application.PluginRegistry,
+		application.ExtensionRegistry,
 		toolReg,
 		application.ProxyClient,
 	)
@@ -108,7 +109,7 @@ func (b *Builder) buildAuth() (auth.SimpleService, error) {
 func (b *Builder) buildToolRegistry(
 	sandboxSvc sandbox.Service,
 	exampleIndex *resource.ExampleIndex,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	proxyClient proxy.Service,
 	runbookReg *runbooks.Registry,
 	runbookIndex *resource.RunbookIndex,
@@ -133,32 +134,32 @@ func (b *Builder) buildToolRegistry(
 
 // buildResourceRegistry creates and populates the resource registry.
 func (b *Builder) buildResourceRegistry(
-	cartographoorClient resource.CartographoorClient,
-	pluginReg *plugin.Registry,
+	cartographoorClient cartographoor.CartographoorClient,
+	pluginReg *extension.Registry,
 	toolReg tool.Registry,
 	proxyClient proxy.Client,
 ) resource.Registry {
 	reg := resource.NewRegistry(b.log)
 
-	// Register datasources resources (from plugin registry and proxy client).
+	// Register datasources resources (from extension registry and proxy client).
 	resource.RegisterDatasourcesResources(b.log, reg, pluginReg, proxyClient)
 
-	// Register examples resources (from plugin registry).
+	// Register examples resources (from extension registry).
 	resource.RegisterExamplesResources(b.log, reg, pluginReg)
 
 	// Register networks resources.
 	resource.RegisterNetworksResources(b.log, reg, cartographoorClient)
 
-	// Register Python library API resources (from plugin registry).
+	// Register Python library API resources (from extension registry).
 	resource.RegisterAPIResources(b.log, reg, pluginReg)
 
 	// Register getting-started resource.
 	resource.RegisterGettingStartedResources(b.log, reg, toolReg, pluginReg)
 
-	// Register plugin-specific resources (e.g., clickhouse://tables).
+	// Register extension-specific resources (e.g., clickhouse://tables).
 	for _, p := range pluginReg.Initialized() {
 		if err := p.RegisterResources(b.log, reg); err != nil {
-			b.log.WithError(err).WithField("plugin", p.Name()).Warn("Failed to register plugin resources")
+			b.log.WithError(err).WithField("extension", p.Name()).Warn("Failed to register extension resources")
 		}
 	}
 

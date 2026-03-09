@@ -282,10 +282,11 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 	promConfigs := make([]handlers.PrometheusConfig, len(c.Prometheus))
 	for i, prom := range c.Prometheus {
 		promConfigs[i] = handlers.PrometheusConfig{
-			Name:     prom.Name,
-			URL:      prom.URL,
-			Username: prom.Username,
-			Password: prom.Password,
+			Name:        prom.Name,
+			Description: prom.Description,
+			URL:         prom.URL,
+			Username:    prom.Username,
+			Password:    prom.Password,
 		}
 	}
 
@@ -293,10 +294,11 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 	lokiConfigs := make([]handlers.LokiConfig, len(c.Loki))
 	for i, loki := range c.Loki {
 		lokiConfigs[i] = handlers.LokiConfig{
-			Name:     loki.Name,
-			URL:      loki.URL,
-			Username: loki.Username,
-			Password: loki.Password,
+			Name:        loki.Name,
+			Description: loki.Description,
+			URL:         loki.URL,
+			Username:    loki.Username,
+			Password:    loki.Password,
 		}
 	}
 

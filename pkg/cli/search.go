@@ -107,7 +107,7 @@ func runSearchExamples(_ *cobra.Command, args []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := searchsvc.New(a.ExampleIndex, a.PluginRegistry, a.RunbookIndex, a.RunbookRegistry)
+	service := searchsvc.New(a.ExampleIndex, a.ExtensionRegistry, a.RunbookIndex, a.RunbookRegistry)
 	response, err := service.SearchExamples(args[0], searchExCategory, searchExLimit)
 	if err != nil {
 		return err
@@ -154,7 +154,7 @@ func runSearchRunbooks(_ *cobra.Command, args []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := searchsvc.New(a.ExampleIndex, a.PluginRegistry, a.RunbookIndex, a.RunbookRegistry)
+	service := searchsvc.New(a.ExampleIndex, a.ExtensionRegistry, a.RunbookIndex, a.RunbookRegistry)
 	response, err := service.SearchRunbooks(args[0], searchRbTag, searchRbLimit)
 	if err != nil {
 		return err

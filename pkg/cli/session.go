@@ -78,7 +78,7 @@ func runSessionList(_ *cobra.Command, _ []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.PluginRegistry, a.ProxyClient)
+	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
 	if !service.SessionsEnabled() {
 		return fmt.Errorf("sessions are not enabled")
 	}
@@ -120,7 +120,7 @@ func runSessionCreate(_ *cobra.Command, _ []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.PluginRegistry, a.ProxyClient)
+	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
 	if !service.SessionsEnabled() {
 		return fmt.Errorf("sessions are not enabled")
 	}
@@ -149,7 +149,7 @@ func runSessionDestroy(_ *cobra.Command, args []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := execsvc.New(log, a.Sandbox, a.Config(), a.PluginRegistry, a.ProxyClient)
+	service := execsvc.New(log, a.Sandbox, a.Config(), a.ExtensionRegistry, a.ProxyClient)
 	if err := service.DestroySession(ctx, args[0], ""); err != nil {
 		return fmt.Errorf("destroying session: %w", err)
 	}

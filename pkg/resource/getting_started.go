@@ -9,7 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 )
 
 // ToolLister provides access to registered tools.
@@ -65,7 +65,7 @@ func RegisterGettingStartedResources(
 	log logrus.FieldLogger,
 	reg Registry,
 	toolReg ToolLister,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 ) {
 	log = log.WithField("resource", "getting_started")
 
@@ -84,11 +84,11 @@ func RegisterGettingStartedResources(
 }
 
 // createGettingStartedHandler creates a handler that dynamically
-// builds content from platform resources and plugin snippets.
+// builds content from platform resources and extension snippets.
 func createGettingStartedHandler(
 	reg Registry,
 	toolReg ToolLister,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 ) ReadHandler {
 	return func(_ context.Context, _ string) (string, error) {
 		var sb strings.Builder
@@ -96,7 +96,7 @@ func createGettingStartedHandler(
 		// Write header with workflow and critical requirements.
 		sb.WriteString(gettingStartedHeader)
 
-		// Include plugin-specific getting-started snippets.
+		// Include extension-specific getting-started snippets.
 		snippets := pluginReg.GettingStartedSnippets()
 		if snippets != "" {
 			sb.WriteString(snippets)

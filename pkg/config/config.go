@@ -15,7 +15,7 @@ import (
 // Config is the main configuration structure.
 type Config struct {
 	Server         ServerConfig         `yaml:"server"`
-	Plugins        map[string]yaml.Node `yaml:"plugins"`
+	Extensions     map[string]yaml.Node `yaml:"extensions"`
 	Auth           AuthConfig           `yaml:"auth"`
 	Sandbox        SandboxConfig        `yaml:"sandbox"`
 	Proxy          ProxyConfig          `yaml:"proxy"`
@@ -182,17 +182,17 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// PluginConfigYAML returns the raw YAML bytes for a given plugin name.
-// Returns nil if the plugin is not configured.
-func (c *Config) PluginConfigYAML(name string) ([]byte, error) {
-	node, ok := c.Plugins[name]
+// ExtensionConfigYAML returns the raw YAML bytes for a given extension name.
+// Returns nil if the extension is not configured.
+func (c *Config) ExtensionConfigYAML(name string) ([]byte, error) {
+	node, ok := c.Extensions[name]
 	if !ok {
 		return nil, nil
 	}
 
 	data, err := yaml.Marshal(&node)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling plugin %q config: %w", name, err)
+		return nil, fmt.Errorf("marshaling extension %q config: %w", name, err)
 	}
 
 	return data, nil

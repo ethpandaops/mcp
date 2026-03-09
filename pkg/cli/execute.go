@@ -71,7 +71,7 @@ func runExecute(_ *cobra.Command, _ []string) error {
 
 	defer func() { _ = a.Stop(ctx) }()
 
-	service := execsvc.New(log, a.Sandbox, cfg, a.PluginRegistry, a.ProxyClient)
+	service := execsvc.New(log, a.Sandbox, cfg, a.ExtensionRegistry, a.ProxyClient)
 	result, err := service.Execute(ctx, execsvc.ExecuteRequest{
 		Code:      code,
 		Timeout:   executeTimeout,

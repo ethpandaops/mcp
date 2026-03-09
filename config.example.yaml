@@ -8,10 +8,10 @@ server:
   base_url: "http://localhost:2480"
 
 # Plugin configuration
-# Each key maps to a compiled-in plugin. Plugins without config are skipped.
-# Datasource availability is discovered from the credential proxy; plugin config is for
+# Each key maps to a compiled-in extension. Extensions without config are skipped.
+# Datasource availability is discovered from the credential proxy; extension config is for
 # schema discovery, documentation, and optional overrides.
-plugins:
+extensions:
   # ClickHouse configuration
   # Schema discovery runs THROUGH the credential proxy (no direct DB creds here).
   # Datasource names must match proxy-config.yaml.

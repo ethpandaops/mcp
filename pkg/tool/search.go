@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/mcp/pkg/plugin"
+	"github.com/ethpandaops/mcp/pkg/extension"
 	"github.com/ethpandaops/mcp/pkg/resource"
 	"github.com/ethpandaops/mcp/pkg/searchsvc"
 	"github.com/ethpandaops/mcp/runbooks"
@@ -36,7 +36,7 @@ type searchHandler struct {
 func NewSearchTool(
 	log logrus.FieldLogger,
 	exampleIndex *resource.ExampleIndex,
-	pluginReg *plugin.Registry,
+	pluginReg *extension.Registry,
 	runbookIndex *resource.RunbookIndex,
 	runbookReg *runbooks.Registry,
 ) Definition {
