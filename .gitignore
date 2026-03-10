@@ -2,8 +2,10 @@
 /mcp
 /ep
 /ep-search
+/proxy
 mcp-linux-*
 *.exe
+*.dylib
 
 # Go
 vendor/
