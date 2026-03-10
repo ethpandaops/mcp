@@ -24,11 +24,11 @@ func (p *Module) Init(rawConfig []byte) error {
 		return err
 	}
 
-	// Filter out instances with empty required fields (e.g., missing env vars).
+	// Filter out instances with empty required fields.
 	validInstances := make([]InstanceConfig, 0, len(p.cfg.Instances))
 
 	for _, inst := range p.cfg.Instances {
-		if inst.Name != "" && inst.URL != "" {
+		if inst.Name != "" {
 			validInstances = append(validInstances, inst)
 		}
 	}
@@ -61,9 +61,6 @@ func (p *Module) Validate() error {
 			return fmt.Errorf("instances[%d].name %q is duplicated", i, inst.Name)
 		}
 		names[inst.Name] = struct{}{}
-		if inst.URL == "" {
-			return fmt.Errorf("instances[%d].url is required", i)
-		}
 	}
 	return nil
 }
