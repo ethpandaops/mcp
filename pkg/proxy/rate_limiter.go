@@ -93,6 +93,9 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 			if !rl.Allow(userID) {
 				rl.log.WithField("user_id", userID).Debug("Rate limit exceeded")
 
+				user, org := resolveUserLabels(r.Context())
+				ProxyRateLimitRejectionsTotal.WithLabelValues(user, org).Inc()
+
 				w.Header().Set("Retry-After", "60")
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 
@@ -200,7 +203,7 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 			}
 
 			// Wrap response writer to capture status code.
-			wrapped := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+			wrapped := &responseCapture{ResponseWriter: w, statusCode: http.StatusOK}
 
 			// Call next handler.
 			next.ServeHTTP(wrapped, r)
@@ -210,7 +213,7 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				UserID:     GetUserID(r.Context()),
 				Method:     r.Method,
 				Path:       r.URL.Path,
-				Datasource: extractDatasource(r.URL.Path),
+				Datasource: extractDatasourceType(r.URL.Path),
 				StatusCode: wrapped.statusCode,
 				Duration:   time.Since(start).String(),
 			}
@@ -236,33 +239,6 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				"duration":   entry.Duration,
 			}).Info("Audit")
 		})
-	}
-}
-
-// responseRecorder wraps http.ResponseWriter to capture the status code.
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}
-
-// extractDatasource extracts the datasource type from the path.
-func extractDatasource(path string) string {
-	switch {
-	case len(path) > 11 && path[:12] == "/clickhouse/":
-		return "clickhouse"
-	case len(path) > 12 && path[:13] == "/prometheus/":
-		return "prometheus"
-	case len(path) > 5 && path[:6] == "/loki/":
-		return "loki"
-	case len(path) > 3 && path[:4] == "/s3/":
-		return "s3"
-	default:
-		return "unknown"
 	}
 }
 

@@ -4,11 +4,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -66,6 +68,33 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Start metrics server if enabled.
+	var metricsServer *http.Server
+
+	if cfg.Metrics.Enabled {
+		addr := fmt.Sprintf(":%d", cfg.Metrics.Port)
+
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		metricsServer = &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+
+		go func() {
+			log.WithField("addr", addr).Info("Starting metrics server")
+
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.WithError(err).Error("Metrics server error")
+			}
+		}()
+	}
+
 	// Create the proxy server.
 	svc, err := proxy.NewServer(log, *cfg)
 	if err != nil {
@@ -93,6 +122,15 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Graceful shutdown.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
+
+	// Stop metrics server.
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			log.WithError(err).Warn("Error stopping metrics server")
+		}
+
+		log.Info("Metrics server stopped")
+	}
 
 	if err := svc.Stop(shutdownCtx); err != nil {
 		return fmt.Errorf("stopping proxy: %w", err)

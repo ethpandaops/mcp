@@ -238,6 +238,9 @@ func (s *server) buildMiddlewareChain() func(http.Handler) http.Handler {
 			h = s.rateLimiter.Middleware()(h)
 		}
 
+		// Per-user request metrics (after auth, wraps rate limiting so 429s are counted).
+		h = metricsMiddleware(h)
+
 		// Authentication (outermost).
 		h = s.authenticator.Middleware()(h)
 

@@ -38,6 +38,7 @@ services:
     command: ["--config", "/config/proxy-config.yaml"]
     ports:
       - "${MCP_PROXY_HOST:-127.0.0.1}:18081:18081"  # Proxy for local clients
+      - "${MCP_PROXY_HOST:-127.0.0.1}:${MCP_PROXY_METRICS_PORT:-9090}:9090"  # Proxy metrics
     env_file:
       - path: .env
     environment:
