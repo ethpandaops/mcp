@@ -185,6 +185,9 @@ sandbox:
   network: "ethpandaops-panda-internal"
   host_shared_path: "/tmp/ethpandaops-panda-sandbox"
 
+storage:
+  base_dir: "/data/storage"
+
 proxy:
   url: %q
   auth:
@@ -208,6 +211,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/ethpandaops-panda-sandbox:/tmp/ethpandaops-panda-sandbox
       - %s/config.yaml:/app/config.yaml:ro
+      - panda-storage:/data/storage
     command: ["serve", "--config", "/app/config.yaml"]
     networks:
       - panda-internal
@@ -216,6 +220,9 @@ networks:
   panda-internal:
     name: ethpandaops-panda-internal
     driver: bridge
+
+volumes:
+  panda-storage:
 `, serverImage, configDir)
 }
 
