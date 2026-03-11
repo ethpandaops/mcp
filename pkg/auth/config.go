@@ -2,10 +2,11 @@ package auth
 
 // Config holds OAuth server configuration for a local product edge.
 type Config struct {
-	Enabled     bool          `yaml:"enabled"`
-	GitHub      *GitHubConfig `yaml:"github,omitempty"`
-	AllowedOrgs []string      `yaml:"allowed_orgs,omitempty"`
-	Tokens      TokensConfig  `yaml:"tokens"`
+	Enabled     bool               `yaml:"enabled"`
+	GitHub      *GitHubConfig      `yaml:"github,omitempty"`
+	AllowedOrgs []string           `yaml:"allowed_orgs,omitempty"`
+	Tokens      TokensConfig       `yaml:"tokens"`
+	SuccessPage *SuccessPageConfig `yaml:"success_page,omitempty"`
 }
 
 // GitHubConfig holds GitHub OAuth configuration.

@@ -97,6 +97,7 @@ func newServer(log logrus.FieldLogger, cfg ServerConfig, hostURL, port string) (
 			GitHub:      cfg.Auth.GitHub,
 			AllowedOrgs: append([]string(nil), cfg.Auth.AllowedOrgs...),
 			Tokens:      cfg.Auth.Tokens,
+			SuccessPage: cfg.Auth.SuccessPage,
 		}
 
 		authSvc, err := simpleauth.NewSimpleService(log, authCfg)

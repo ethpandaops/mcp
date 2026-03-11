@@ -535,6 +535,26 @@ func (s *simpleService) handleCallback(w http.ResponseWriter, r *http.Request) {
 		redirectParams.Set("orgs", strings.Join(githubUser.Organizations, ","))
 	}
 
+	// Resolve success page display customization from config rules.
+	if s.cfg.SuccessPage != nil {
+		display := s.cfg.SuccessPage.Resolve(githubUser.Login, githubUser.Organizations)
+		if display.Tagline != "" {
+			redirectParams.Set("sp_tagline", display.Tagline)
+		}
+
+		if display.Media != nil {
+			redirectParams.Set("sp_media_type", display.Media.Type)
+
+			if display.Media.URL != "" {
+				redirectParams.Set("sp_media_url", display.Media.URL)
+			}
+
+			if display.Media.ASCIIArtBase64 != "" {
+				redirectParams.Set("sp_media_ascii", display.Media.ASCIIArtBase64)
+			}
+		}
+	}
+
 	redirectURL := fmt.Sprintf("%s?%s", pending.RedirectURI, redirectParams.Encode())
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }

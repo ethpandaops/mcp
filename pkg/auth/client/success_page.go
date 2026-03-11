@@ -12,37 +12,17 @@ type callbackUser struct {
 	Login     string
 	AvatarURL string
 	Orgs      []string
-}
 
-// specialUsers get ASCII art instead of the GIF.
-var specialUsers = map[string]bool{
-	"samcm":     true,
-	"mattevans": true,
-	"savid":     true,
-}
-
-// pandaASCIIBase64 is the base64-encoded ASCII art shown to special users.
-// To update: write your raw multiline ASCII art to a file, then:
-//
-//	base64 < art.txt | tr -d '\n'
-//
-// Paste the output here.
-var pandaASCIIBase64 = "KiBnIG8gYSB0IHMgZSB4ICogZyBvIGEgdCBzIGUgeCAqIGcgbyBhIHQgcyBlIHggKgpnICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBnICAKbyAvICAgICBcICAgICAgICAgICAgIFwgICAgICAgICAgICAvICAgIFwgICAgICAgbwphfCAgICAgICB8ICAgICAgICAgICAgIFwgICAgICAgICAgfCAgICAgIHwgICAgICBhCnR8ICAgICAgIGAuICAgICAgICAgICAgIHwgICAgICAgICB8ICAgICAgIDogICAgIHQKc2AgICAgICAgIHwgICAgICAgICAgICAgfCAgICAgICAgXHwgICAgICAgfCAgICAgcwplIFwgICAgICAgfCAvICAgICAgIC8gIFxcXCAgIC0tX18gXFwgICAgICAgOiAgICBlCnggIFwgICAgICBcLyAgIF8tLX5+ICAgICAgICAgIH4tLV9ffCBcICAgICB8ICAgIHggIAoqICAgXCAgICAgIFxfLX4gICAgICAgICAgICAgICAgICAgIH4tX1wgICAgfCAgICAqCmcgICAgXF8gICAgIFwgICAgICAgIF8uLS0tLS0tLS0uX19fX19fXHwgICB8ICAgIGcKbyAgICAgIFwgICAgIFxfX19fX18vLyBfIF9fXyBfIChfKF9fPiAgXCAgIHwgICAgbwphICAgICAgIFwgICAuICBDIF9fXykgIF9fX19fXyAoXyhfX19fPiAgfCAgLyAgICBhCnQgICAgICAgL1wgfCAgIEMgX19fXykvICAgICAgXCAoX19fX18+ICB8Xy8gICAgIHQKcyAgICAgIC8gL1x8ICAgQ19fX19fKSAgICAgICB8ICAoX19fPiAgIC8gIFwgICAgcwplICAgICB8ICAgKCAgIF9DX19fX18pXF9fX19fXy8gIC8vIF8vIC8gICAgIFwgICBlCnggICAgIHwgICAgXCAgfF9fICAgXFxfX19fX19fX18vLyAoX18vICAgICAgIHwgIHgKKiAgICB8IFwgICAgXF9fX18pICAgYC0tLS0gICAtLScgICAgICAgICAgICAgfCAgKgpnICAgIHwgIFxfICAgICAgICAgIF9fX1wgICAgICAgL18gICAgICAgICAgXy8gfCBnCm8gICB8ICAgICAgICAgICAgICAvICAgIHwgICAgIHwgIFwgICAgICAgICAgICB8IG8KYSAgIHwgICAgICAgICAgICAgfCAgICAvICAgICAgIFwgIFwgICAgICAgICAgIHwgYQp0ICAgfCAgICAgICAgICAvIC8gICAgfCAgICAgICAgIHwgIFwgICAgICAgICAgIHx0CnMgICB8ICAgICAgICAgLyAvICAgICAgXF9fL1xfX18vICAgIHwgICAgICAgICAgfHMKZSAgfCAgICAgICAgICAgLyAgICAgICAgfCAgICB8ICAgICAgIHwgICAgICAgICB8ZQp4ICB8ICAgICAgICAgIHwgICAgICAgICB8ICAgIHwgICAgICAgfCAgICAgICAgIHx4CiogZyBvIGEgdCBzIGUgeCAqIGcgbyBhIHQgcyBlIHggKiBnIG8gYSB0IHMgZSB4ICoK" //nolint:lll // base64 blob
-
-// decodePandaASCII decodes the base64-encoded ASCII art.
-func decodePandaASCII() string {
-	b, err := base64.StdEncoding.DecodeString(pandaASCIIBase64)
-	if err != nil {
-		return "(panda art failed to decode)"
-	}
-
-	return string(b)
+	// Display fields resolved by proxy success page rules.
+	Tagline       string
+	MediaType     string // "gif" or "ascii"
+	MediaURL      string
+	MediaASCIIB64 string
 }
 
 // buildSuccessPage generates a styled HTML success page based on user info.
 func buildSuccessPage(user callbackUser) string { //nolint:funlen // single HTML template
-	isEthPandaOps := hasOrg(user.Orgs, "ethpandaops")
-	isSpecialUser := specialUsers[strings.ToLower(user.Login)]
+	hasOrgs := len(user.Orgs) > 0
 
 	login := html.EscapeString(user.Login)
 	if login == "" {
@@ -59,32 +39,42 @@ func buildSuccessPage(user callbackUser) string { //nolint:funlen // single HTML
 		avatarHTML = `<div class="avatar avatar-fallback">` + strings.ToUpper(login[:1]) + `</div>`
 	}
 
-	// Build the context line — what org, what just happened.
+	// Build the context line — org badge or generic identity note.
 	contextHTML := `<span class="context-muted">GitHub identity linked</span>`
-	if isEthPandaOps {
-		contextHTML = `<span class="org-badge">ethpandaops</span>`
+	if hasOrgs {
+		contextHTML = fmt.Sprintf(`<span class="org-badge">%s</span>`,
+			html.EscapeString(strings.ToLower(user.Orgs[0])))
 	}
 
 	// Status subtitle.
 	statusSub := "You've successfully logged in to panda"
-	if isEthPandaOps {
-		statusSub = "You've successfully logged in to ethpandaops/panda"
+	if hasOrgs {
+		statusSub = fmt.Sprintf("You've successfully logged in to %s/panda",
+			strings.ToLower(user.Orgs[0]))
 	}
 
-	// Tagline — shown after the media block.
-	tagline := "You can close this window and return to your terminal."
-	if isEthPandaOps {
-		tagline = "Enjoy debugging your devnet champ"
+	// Tagline — from config rules or default.
+	tagline := user.Tagline
+	if tagline == "" {
+		tagline = "You can close this window and return to your terminal."
 	}
 
-	// Media — GIF or ASCII art for ethpandaops members.
+	// Media — rendered from config-driven display fields.
 	mediaHTML := ""
-	if isEthPandaOps {
-		if isSpecialUser {
-			art := decodePandaASCII()
-			mediaHTML = fmt.Sprintf(`<pre class="ascii-art">%s</pre>`, html.EscapeString(art))
-		} else {
-			mediaHTML = `<div class="media-frame"><img src="https://media1.tenor.com/m/92A2K1kvoHcAAAAd/casino-royale-bond.gif" alt="" class="gif"></div>` //nolint:lll // gif URL
+
+	switch user.MediaType {
+	case "ascii":
+		if user.MediaASCIIB64 != "" {
+			if art, err := base64.StdEncoding.DecodeString(user.MediaASCIIB64); err == nil {
+				mediaHTML = fmt.Sprintf(`<pre class="ascii-art">%s</pre>`, html.EscapeString(string(art)))
+			}
+		}
+	case "gif":
+		if user.MediaURL != "" {
+			mediaHTML = fmt.Sprintf(
+				`<div class="media-frame"><img src="%s" alt="" class="gif"></div>`,
+				html.EscapeString(user.MediaURL),
+			)
 		}
 	}
 
