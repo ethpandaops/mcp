@@ -361,9 +361,7 @@ func (s *service) handleRuntimeStorageUpload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	contentType := strings.TrimSpace(r.Header.Get("Content-Type"))
-
-	relativeKey, url, err := s.storageService.Upload(executionID, name, r.Body, contentType)
+	relativeKey, url, err := s.storageService.Upload(executionID, name, r.Body)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, fmt.Sprintf("upload failed: %v", err))
 		return

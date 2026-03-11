@@ -2,6 +2,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 )
 
@@ -25,7 +25,7 @@ type File struct {
 // Service provides file storage backed by an afero filesystem.
 type Service interface {
 	// Upload stores a file scoped to an execution and returns its relative key and public URL.
-	Upload(executionID, name string, body io.Reader, contentType string) (relativeKey, url string, err error)
+	Upload(executionID, name string, body io.Reader) (relativeKey, url string, err error)
 	// List returns files scoped to an execution, optionally filtered by prefix.
 	List(executionID, prefix string) ([]File, error)
 	// GetURL returns the public URL for a file scoped to an execution.
@@ -35,7 +35,6 @@ type Service interface {
 }
 
 type service struct {
-	log     logrus.FieldLogger
 	fs      afero.Fs
 	baseDir string
 	baseURL string
@@ -46,9 +45,8 @@ type service struct {
 // fs is the filesystem implementation (afero.OsFs for production, afero.MemMapFs for tests).
 // baseDir is the root directory for stored files.
 // baseURL is the server's public base URL used to construct file URLs.
-func New(log logrus.FieldLogger, fs afero.Fs, baseDir, baseURL string) Service {
+func New(fs afero.Fs, baseDir, baseURL string) Service {
 	return &service{
-		log:     log.WithField("component", "storage"),
 		fs:      fs,
 		baseDir: baseDir,
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -56,8 +54,8 @@ func New(log logrus.FieldLogger, fs afero.Fs, baseDir, baseURL string) Service {
 }
 
 // Upload stores a file and returns its relative key and public URL.
-func (s *service) Upload(executionID, name string, body io.Reader, contentType string) (string, string, error) {
-	relativeKey, err := relativeKey(executionID, name)
+func (s *service) Upload(executionID, name string, body io.Reader) (string, string, error) {
+	rel, err := relativeKey(executionID, name)
 	if err != nil {
 		return "", "", err
 	}
@@ -67,7 +65,7 @@ func (s *service) Upload(executionID, name string, body io.Reader, contentType s
 		return "", "", fmt.Errorf("creating storage directory: %w", err)
 	}
 
-	filePath := filepath.Join(s.baseDir, sanitize(executionID), relativeKey)
+	filePath := filepath.Join(dir, rel)
 
 	f, err := s.fs.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
@@ -83,27 +81,15 @@ func (s *service) Upload(executionID, name string, body io.Reader, contentType s
 		return "", "", fmt.Errorf("closing file: %w", err)
 	}
 
-	url := s.fileURL(executionID, relativeKey)
-
-	return relativeKey, url, nil
+	return rel, s.fileURL(executionID, rel), nil
 }
 
 // List returns files for an execution, optionally filtered by prefix.
 func (s *service) List(executionID, prefix string) ([]File, error) {
 	dir := filepath.Join(s.baseDir, sanitize(executionID))
-
-	exists, err := afero.DirExists(s.fs, dir)
-	if err != nil {
-		return nil, fmt.Errorf("checking directory: %w", err)
-	}
-
-	if !exists {
-		return []File{}, nil
-	}
-
 	files := make([]File, 0, 16)
 
-	err = afero.Walk(s.fs, dir, func(path string, info os.FileInfo, walkErr error) error {
+	err := afero.Walk(s.fs, dir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -135,6 +121,11 @@ func (s *service) List(executionID, prefix string) ([]File, error) {
 	})
 
 	if err != nil {
+		// Directory doesn't exist yet — no files uploaded for this execution.
+		if errors.Is(err, os.ErrNotExist) {
+			return []File{}, nil
+		}
+
 		return nil, fmt.Errorf("listing files: %w", err)
 	}
 
@@ -153,15 +144,14 @@ func (s *service) GetURL(executionID, key string) string {
 
 // ServeFile serves a stored file from the filesystem.
 func (s *service) ServeFile(w http.ResponseWriter, r *http.Request, filePath string) {
-	fullPath := filepath.Join(s.baseDir, filepath.FromSlash(filePath))
+	fullPath := filepath.Clean(filepath.Join(s.baseDir, filepath.FromSlash(filePath)))
 
-	exists, err := afero.Exists(s.fs, fullPath)
-	if err != nil || !exists {
+	// Prevent path traversal — resolved path must stay under baseDir.
+	if !strings.HasPrefix(fullPath, filepath.Clean(s.baseDir)+string(os.PathSeparator)) {
 		http.NotFound(w, r)
 		return
 	}
 
-	// afero doesn't directly support http.ServeFile, so read and serve manually.
 	f, err := s.fs.Open(fullPath)
 	if err != nil {
 		http.NotFound(w, r)
@@ -191,14 +181,21 @@ func (s *service) fileURL(executionID, key string) string {
 	return s.baseURL + "/api/v1/storage/files/" + sanitize(executionID) + "/" + key
 }
 
-// sanitize strips leading slashes and whitespace from a path component.
+// sanitize strips leading slashes, whitespace, and path traversal components from a path segment.
 func sanitize(s string) string {
-	return strings.TrimLeft(strings.TrimSpace(s), "/")
+	cleaned := strings.TrimLeft(strings.TrimSpace(s), "/")
+	// Reject any path traversal attempts.
+	cleaned = filepath.Clean(cleaned)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+		return ""
+	}
+
+	return cleaned
 }
 
 // relativeKey normalizes a key, stripping the execution prefix if present.
 func relativeKey(executionID, key string) (string, error) {
-	trimmed := strings.TrimLeft(strings.TrimSpace(key), "/")
+	trimmed := sanitize(key)
 	if trimmed == "" {
 		return "", fmt.Errorf("key is required")
 	}

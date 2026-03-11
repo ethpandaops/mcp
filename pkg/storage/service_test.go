@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,8 +13,7 @@ import (
 
 func newTestService() (Service, afero.Fs) {
 	fs := afero.NewMemMapFs()
-	log := logrus.New()
-	svc := New(log, fs, "/data", "http://localhost:2480")
+	svc := New(fs, "/data", "http://localhost:2480")
 
 	return svc, fs
 }
@@ -26,7 +24,7 @@ func TestUploadAndList(t *testing.T) {
 	svc, _ := newTestService()
 
 	body := bytes.NewBufferString("hello world")
-	key, url, err := svc.Upload("exec-123", "chart.png", body, "image/png")
+	key, url, err := svc.Upload("exec-123", "chart.png", body)
 	require.NoError(t, err)
 	assert.Equal(t, "chart.png", key)
 	assert.Equal(t, "http://localhost:2480/api/v1/storage/files/exec-123/chart.png", url)
@@ -45,7 +43,7 @@ func TestUploadSubdirectory(t *testing.T) {
 	svc, _ := newTestService()
 
 	body := bytes.NewBufferString("data")
-	key, _, err := svc.Upload("exec-456", "reports/output.csv", body, "text/csv")
+	key, _, err := svc.Upload("exec-456", "reports/output.csv", body)
 	require.NoError(t, err)
 	assert.Equal(t, "reports/output.csv", key)
 
@@ -70,10 +68,10 @@ func TestListWithPrefix(t *testing.T) {
 
 	svc, _ := newTestService()
 
-	_, _, err := svc.Upload("exec-789", "charts/a.png", bytes.NewBufferString("a"), "image/png")
+	_, _, err := svc.Upload("exec-789", "charts/a.png", bytes.NewBufferString("a"))
 	require.NoError(t, err)
 
-	_, _, err = svc.Upload("exec-789", "data/b.csv", bytes.NewBufferString("b"), "text/csv")
+	_, _, err = svc.Upload("exec-789", "data/b.csv", bytes.NewBufferString("b"))
 	require.NoError(t, err)
 
 	files, err := svc.List("exec-789", "charts/")
@@ -105,7 +103,7 @@ func TestUploadEmptyKeyError(t *testing.T) {
 
 	svc, _ := newTestService()
 
-	_, _, err := svc.Upload("exec-123", "", bytes.NewBufferString("data"), "text/plain")
+	_, _, err := svc.Upload("exec-123", "", bytes.NewBufferString("data"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "key is required")
 }
@@ -127,7 +125,7 @@ func TestServeFileSuccess(t *testing.T) {
 	svc, _ := newTestService()
 
 	body := bytes.NewBufferString("file content")
-	_, _, err := svc.Upload("exec-123", "output.txt", body, "text/plain")
+	_, _, err := svc.Upload("exec-123", "output.txt", body)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -142,10 +140,10 @@ func TestUploadOverwritesExisting(t *testing.T) {
 
 	svc, _ := newTestService()
 
-	_, _, err := svc.Upload("exec-123", "file.txt", bytes.NewBufferString("v1"), "text/plain")
+	_, _, err := svc.Upload("exec-123", "file.txt", bytes.NewBufferString("v1"))
 	require.NoError(t, err)
 
-	_, _, err = svc.Upload("exec-123", "file.txt", bytes.NewBufferString("v2"), "text/plain")
+	_, _, err = svc.Upload("exec-123", "file.txt", bytes.NewBufferString("v2"))
 	require.NoError(t, err)
 
 	files, err := svc.List("exec-123", "")
@@ -159,10 +157,10 @@ func TestIsolationBetweenExecutions(t *testing.T) {
 
 	svc, _ := newTestService()
 
-	_, _, err := svc.Upload("exec-a", "file.txt", bytes.NewBufferString("a"), "text/plain")
+	_, _, err := svc.Upload("exec-a", "file.txt", bytes.NewBufferString("a"))
 	require.NoError(t, err)
 
-	_, _, err = svc.Upload("exec-b", "file.txt", bytes.NewBufferString("b"), "text/plain")
+	_, _, err = svc.Upload("exec-b", "file.txt", bytes.NewBufferString("b"))
 	require.NoError(t, err)
 
 	filesA, err := svc.List("exec-a", "")
@@ -172,4 +170,15 @@ func TestIsolationBetweenExecutions(t *testing.T) {
 	filesB, err := svc.List("exec-b", "")
 	require.NoError(t, err)
 	require.Len(t, filesB, 1)
+}
+
+func TestServeFilePathTraversal(t *testing.T) {
+	t.Parallel()
+
+	svc, _ := newTestService()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/storage/files/../../etc/passwd", nil)
+	svc.ServeFile(w, r, "../../etc/passwd")
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

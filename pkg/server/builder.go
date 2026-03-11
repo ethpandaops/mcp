@@ -123,7 +123,6 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 
 	// Create local file storage service.
 	storageSvc := storage.New(
-		b.log,
 		afero.NewOsFs(),
 		b.cfg.Storage.BaseDir,
 		serverBaseURL,
