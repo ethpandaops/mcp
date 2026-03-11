@@ -22,7 +22,7 @@ RUN mkdir -p /model/all-MiniLM-L6-v2 && \
 # =============================================================================
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata docker-cli
 
 RUN addgroup -g 1000 panda && \
     adduser -u 1000 -G panda -D panda

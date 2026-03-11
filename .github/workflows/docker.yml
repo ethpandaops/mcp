@@ -58,3 +58,28 @@ jobs:
 
       - name: Build sandbox image
         run: docker build -f sandbox/Dockerfile .
+
+  server-docker-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build server binary
+        run: |
+          mkdir -p linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o linux/amd64/panda-server ./cmd/server
+
+      - name: Build server image
+        run: docker build -f goreleaser.server.Dockerfile -t panda-server-smoke .
+
+      - name: Verify Docker socket access from server container
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+            panda-server-smoke \
+            docker info --format '{{.ServerVersion}}'
