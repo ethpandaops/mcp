@@ -43,6 +43,9 @@ type ServerConfig struct {
 
 	// Audit holds audit logging configuration.
 	Audit AuditConfig `yaml:"audit"`
+
+	// Metrics holds Prometheus metrics configuration.
+	Metrics MetricsConfig `yaml:"metrics"`
 }
 
 // HTTPServerConfig holds HTTP server configuration.
@@ -151,6 +154,15 @@ type AuditConfig struct {
 	MaxQueryLength int `yaml:"max_query_length,omitempty"`
 }
 
+// MetricsConfig holds Prometheus metrics configuration for the proxy.
+type MetricsConfig struct {
+	// Enabled controls whether the Prometheus metrics server is active.
+	Enabled bool `yaml:"enabled"`
+
+	// Port is the port to serve the /metrics endpoint on (default: 9090).
+	Port int `yaml:"port,omitempty"`
+}
+
 // ApplyDefaults sets default values for the server config.
 func (c *ServerConfig) ApplyDefaults() {
 	// Server defaults.
@@ -192,6 +204,11 @@ func (c *ServerConfig) ApplyDefaults() {
 	// Audit defaults.
 	if c.Audit.MaxQueryLength == 0 {
 		c.Audit.MaxQueryLength = 500
+	}
+
+	// Metrics defaults.
+	if c.Metrics.Port == 0 {
+		c.Metrics.Port = 9090
 	}
 
 	// ClickHouse defaults.

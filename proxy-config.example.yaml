@@ -91,3 +91,8 @@ audit:
   enabled: true
   log_queries: true
   max_query_length: 500
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  port: 9090
