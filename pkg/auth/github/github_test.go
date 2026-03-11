@@ -75,7 +75,7 @@ func TestExchangeCodeSuccess(t *testing.T) {
 	client.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			assert.Equal(t, http.MethodPost, req.Method)
-			assert.Equal(t, githubAccessTokenEndpoint, req.URL.String())
+			assert.Equal(t, githubOAuthExchangeURL, req.URL.String())
 			assert.Equal(t, "application/json", req.Header.Get("Accept"))
 			assert.Equal(t, "application/x-www-form-urlencoded", req.Header.Get("Content-Type"))
 
