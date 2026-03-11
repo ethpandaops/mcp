@@ -169,8 +169,20 @@ func (s *store) GetAccessToken() (string, error) {
 
 	// Check if token needs refresh.
 	if s.needsRefresh(tokens) {
+		if tokens.RefreshToken == "" {
+			if time.Now().Before(tokens.ExpiresAt) {
+				return tokens.AccessToken, nil
+			}
+
+			return "", fmt.Errorf("access token expired and no refresh token available")
+		}
+
 		newTokens, err := s.refresh(tokens.RefreshToken)
 		if err != nil {
+			if time.Now().Before(tokens.ExpiresAt) {
+				return tokens.AccessToken, nil
+			}
+
 			return "", fmt.Errorf("refreshing token: %w", err)
 		}
 		tokens = newTokens

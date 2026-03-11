@@ -167,6 +167,7 @@ func (c *client) Refresh(ctx context.Context, refreshToken string) (*Tokens, err
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"client_id":     {c.cfg.ClientID},
+		"resource":      {c.cfg.Resource},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.oidc.TokenEndpoint, strings.NewReader(data.Encode()))
@@ -191,9 +192,14 @@ func (c *client) Refresh(ctx context.Context, refreshToken string) (*Tokens, err
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
+	resolvedRefreshToken := tokenResp.RefreshToken
+	if resolvedRefreshToken == "" {
+		resolvedRefreshToken = refreshToken
+	}
+
 	return &Tokens{
 		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
+		RefreshToken: resolvedRefreshToken,
 		TokenType:    tokenResp.TokenType,
 		ExpiresIn:    tokenResp.ExpiresIn,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),

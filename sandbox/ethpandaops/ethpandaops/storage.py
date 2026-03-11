@@ -102,10 +102,10 @@ def _get_content_type(suffix: str) -> str:
 
 
 def list_files(prefix: str = "") -> list[dict]:
-    """List files in the S3 bucket.
+    """List files for the current execution.
 
     Args:
-        prefix: Optional prefix to filter files.
+        prefix: Optional execution-relative prefix to filter files.
 
     Returns:
         List of file info dictionaries with 'key', 'size', 'last_modified'.
@@ -124,10 +124,10 @@ def list_files(prefix: str = "") -> list[dict]:
 
 
 def get_url(key: str) -> str:
-    """Get the public URL for a file.
+    """Get the public URL for a file from the current execution.
 
     Args:
-        key: S3 object key.
+        key: Execution-relative object key.
 
     Returns:
         Public URL for the file.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -193,25 +194,33 @@ func (s *server) registerRoutes() {
 
 	// Authenticated routes.
 	if s.clickhouseHandler != nil {
-		s.mux.Handle("/clickhouse/", chain(s.clickhouseHandler))
+		s.handleSubtreeRoute("/clickhouse", chain(s.clickhouseHandler))
 	}
 
 	if s.prometheusHandler != nil {
-		s.mux.Handle("/prometheus/", chain(s.prometheusHandler))
+		s.handleSubtreeRoute("/prometheus", chain(s.prometheusHandler))
 	}
 
 	if s.lokiHandler != nil {
-		s.mux.Handle("/loki/", chain(s.lokiHandler))
+		s.handleSubtreeRoute("/loki", chain(s.lokiHandler))
 	}
 
 	if s.s3Handler != nil {
-		s.mux.Handle("/s3/", chain(s.s3Handler))
+		s.handleSubtreeRoute("/s3", chain(s.s3Handler))
 	}
 
 	if s.ethNodeHandler != nil {
-		s.mux.Handle("/beacon/", chain(s.ethNodeHandler))
-		s.mux.Handle("/execution/", chain(s.ethNodeHandler))
+		s.handleSubtreeRoute("/beacon", chain(s.ethNodeHandler))
+		s.handleSubtreeRoute("/execution", chain(s.ethNodeHandler))
 	}
+}
+
+func (s *server) handleSubtreeRoute(pattern string, handler http.Handler) {
+	base := strings.TrimSuffix(pattern, "/")
+
+	s.mux.Handle(base, handler)
+	s.mux.Handle(base+"/", handler)
+	s.mux.Handle(base+"/*", handler)
 }
 
 // buildMiddlewareChain builds the middleware chain for authenticated routes.

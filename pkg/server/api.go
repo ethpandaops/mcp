@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -363,7 +362,12 @@ func (s *service) handleRuntimeStorageUpload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	key := executionID + "/" + name
+	key, relativeKey, err := serverapi.RuntimeStorageScopedKey(executionID, name)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	proxyPath := "/s3/" + bucket + "/" + key
 
 	headers := make(http.Header)
@@ -383,7 +387,7 @@ func (s *service) handleRuntimeStorageUpload(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeJSON(w, http.StatusOK, serverapi.RuntimeStorageUploadResponse{
-		Key: key,
+		Key: relativeKey,
 		URL: s.runtimeStoragePublicURL(key),
 	})
 }
@@ -395,15 +399,20 @@ func (s *service) handleRuntimeStorageList(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	executionID := runtimeExecutionID(r.Context())
+	if executionID == "" {
+		writeAPIError(w, http.StatusUnauthorized, "runtime execution ID is missing")
+		return
+	}
+
 	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
+	scopedPrefix := serverapi.RuntimeStorageScopedPrefix(executionID, prefix)
 	files := make([]serverapi.RuntimeStorageFile, 0, 16)
 	continuationToken := ""
 
 	for {
 		query := url.Values{"list-type": {"2"}}
-		if prefix != "" {
-			query.Set("prefix", prefix)
-		}
+		query.Set("prefix", scopedPrefix)
 		if continuationToken != "" {
 			query.Set("continuation-token", continuationToken)
 		}
@@ -419,7 +428,7 @@ func (s *service) handleRuntimeStorageList(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		pageFiles, nextToken, err := parseRuntimeStorageList(data, s.runtimeStoragePublicURL)
+		pageFiles, nextToken, err := serverapi.ParseRuntimeStorageList(data, executionID, s.runtimeStoragePublicURL)
 		if err != nil {
 			writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("decoding storage listing failed: %v", err))
 			return
@@ -437,15 +446,27 @@ func (s *service) handleRuntimeStorageList(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *service) handleRuntimeStorageURL(w http.ResponseWriter, r *http.Request) {
+	executionID := runtimeExecutionID(r.Context())
+	if executionID == "" {
+		writeAPIError(w, http.StatusUnauthorized, "runtime execution ID is missing")
+		return
+	}
+
 	key := strings.TrimSpace(r.URL.Query().Get("key"))
 	if key == "" {
 		writeAPIError(w, http.StatusBadRequest, "key is required")
 		return
 	}
 
+	scopedKey, relativeKey, err := serverapi.RuntimeStorageScopedKey(executionID, key)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	writeJSON(w, http.StatusOK, serverapi.RuntimeStorageURLResponse{
-		Key: key,
-		URL: s.runtimeStoragePublicURL(key),
+		Key: relativeKey,
+		URL: s.runtimeStoragePublicURL(scopedKey),
 	})
 }
 
@@ -502,47 +523,6 @@ func (s *service) runtimeStoragePublicURL(key string) string {
 
 	bucket := strings.TrimSpace(s.proxyService.S3Bucket())
 	return strings.TrimRight(s.proxyService.URL(), "/") + "/s3/" + bucket + "/" + key
-}
-
-type runtimeStorageListResult struct {
-	XMLName  xml.Name `xml:"ListBucketResult"`
-	Contents []struct {
-		Key          string `xml:"Key"`
-		Size         int64  `xml:"Size"`
-		LastModified string `xml:"LastModified"`
-	} `xml:"Contents"`
-	NextContinuationToken string `xml:"NextContinuationToken"`
-	IsTruncated           string `xml:"IsTruncated"`
-}
-
-func parseRuntimeStorageList(
-	data []byte,
-	urlForKey func(string) string,
-) ([]serverapi.RuntimeStorageFile, string, error) {
-	var result runtimeStorageListResult
-	if err := xml.Unmarshal(data, &result); err != nil {
-		return nil, "", err
-	}
-
-	files := make([]serverapi.RuntimeStorageFile, 0, len(result.Contents))
-	for _, item := range result.Contents {
-		if item.Key == "" {
-			continue
-		}
-
-		files = append(files, serverapi.RuntimeStorageFile{
-			Key:          item.Key,
-			Size:         item.Size,
-			LastModified: item.LastModified,
-			URL:          urlForKey(item.Key),
-		})
-	}
-
-	if strings.EqualFold(strings.TrimSpace(result.IsTruncated), "true") {
-		return files, result.NextContinuationToken, nil
-	}
-
-	return files, "", nil
 }
 
 func runtimeExecutionID(ctx context.Context) string {
