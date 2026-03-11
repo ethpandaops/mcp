@@ -45,8 +45,7 @@ func (p *Module) SetProxyClient(client proxy.Service) {
 	p.proxySvc = client
 }
 
-// InitFromDiscovery initializes the module from proxy-discovered datasources.
-// Only datasources with type "clickhouse" are used.
+// InitFromDiscovery initializes the module from discovered datasources.
 func (p *Module) InitFromDiscovery(datasources []types.DatasourceInfo) error {
 	var filtered []types.DatasourceInfo
 
@@ -114,7 +113,7 @@ func (p *Module) Validate() error {
 	return nil
 }
 
-// SandboxEnv returns credential-free environment variables for the sandbox.
+// SandboxEnv returns environment variables for the sandbox.
 func (p *Module) SandboxEnv() (map[string]string, error) {
 	if len(p.datasources) == 0 {
 		return nil, nil

@@ -21,8 +21,7 @@ func New() *Module {
 
 func (p *Module) Name() string { return "ethnode" }
 
-// InitFromDiscovery initializes the module from proxy-discovered datasources.
-// Ethnode checks for any datasource with type "ethnode" as an availability signal.
+// InitFromDiscovery enables the module if an ethnode datasource exists.
 func (p *Module) InitFromDiscovery(datasources []types.DatasourceInfo) error {
 	for _, ds := range datasources {
 		if ds.Type == "ethnode" {
@@ -49,7 +48,6 @@ func (p *Module) ApplyDefaults() {}
 func (p *Module) Validate() error { return nil }
 
 // SandboxEnv returns environment variables for the sandbox.
-// Only a credential-free availability signal is sent; actual requests go through the proxy.
 func (p *Module) SandboxEnv() (map[string]string, error) {
 	if !p.cfg.IsEnabled() {
 		return nil, nil

@@ -3,8 +3,6 @@ package clickhouse
 import "time"
 
 // Config holds the ClickHouse module configuration.
-// Datasource identity (name, description, database) comes from the proxy;
-// only server-side behavior like schema discovery is configured here.
 type Config struct {
 	SchemaDiscovery SchemaDiscoveryConfig `yaml:"schema_discovery"`
 }

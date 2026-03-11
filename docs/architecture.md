@@ -36,8 +36,8 @@ If a change affects product semantics, defaults, validation, output shape, or th
 
 `proxy` is intentionally thin. It owns:
 
-- datasource identity and credentials (the single source of truth for what datasources exist)
-- datasource discovery via `GET /datasources` (credential-free metadata for server consumption)
+- datasource identity and credentials
+- datasource discovery via `GET /datasources` (authenticated, returns metadata without credentials)
 - hosted auth control plane for remote users
 - proxy-scoped bearer token validation
 - raw upstream relay to ClickHouse, Prometheus, Loki, S3, and Ethereum nodes
@@ -117,18 +117,16 @@ Optional capabilities are declared explicitly in `pkg/module/module.go`, for exa
 - getting-started snippets
 - custom resources
 - proxy-aware startup
-- proxy-discoverable (auto-init from proxy datasources)
+- proxy-discoverable
 - cartographoor-aware startup
 
 Modules are server-side integrations. They do not define new MCP tools.
 
 ### Datasource Discovery
 
-The proxy is the single source of truth for datasource identity (name, description, metadata).
-Modules that implement `ProxyDiscoverable` auto-initialize from proxy-discovered datasources.
-The server config has no `modules:` section — it only needs `server`, `proxy`, and `sandbox`.
-
-The proxy client refreshes datasource info every 5 minutes by default.
+Datasource identity (name, description, metadata) is owned by the proxy.
+Modules that implement `ProxyDiscoverable` initialize from discovered datasources.
+The proxy client refreshes datasource info every 5 minutes.
 
 ## Guardrails
 

@@ -69,9 +69,8 @@ func (r *Registry) InitModule(name string, rawConfig []byte) error {
 	return nil
 }
 
-// InitModuleFromDiscovery initializes a module using proxy-discovered datasources.
-// The module must implement ProxyDiscoverable. It calls InitFromDiscovery,
-// ApplyDefaults, and Validate in sequence.
+// InitModuleFromDiscovery initializes a module from discovered datasources.
+// The module must implement ProxyDiscoverable.
 func (r *Registry) InitModuleFromDiscovery(name string, datasources []types.DatasourceInfo) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -181,9 +180,7 @@ func (r *Registry) StopAll(ctx context.Context) {
 	}
 }
 
-// SandboxEnv aggregates credential-free sandbox environment variables
-// from all initialized modules. Credentials are never passed to sandbox
-// containers - they connect via the credential proxy instead.
+// SandboxEnv aggregates sandbox environment variables from all initialized modules.
 func (r *Registry) SandboxEnv() (map[string]string, error) {
 	r.mu.RLock()
 	modules := make([]Module, len(r.initialized))

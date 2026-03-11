@@ -21,7 +21,7 @@ See `docs/architecture.md` for the canonical boundary definition.
 - sandboxed Python calls back into `server`, never directly into `proxy`
 - `proxy` is a thin credentialed upstream gateway, not a product operations API
 - module behavior is exposed through `execute_python`, resources, docs, and search; do not add per-module MCP tools
-- the proxy is the single source of truth for datasource identity; modules auto-initialize from proxy discovery
+- datasource identity is owned by the proxy; modules initialize from proxy discovery
 
 ## Supported Deployment Modes
 
@@ -105,12 +105,12 @@ Five compiled-in modules are registered in `pkg/app/app.go`:
 
 Each module implements `module.Module` in `pkg/module/module.go`. Optional capability interfaces live alongside it in `pkg/module/module.go`.
 - `ProxyAware` — receives proxy client for proxy-backed operations
-- `ProxyDiscoverable` — auto-initializes from proxy-discovered datasources
+- `ProxyDiscoverable` — initializes from discovered datasources
 - `CartographoorAware` — receives network discovery client
 - `DefaultEnabled` — activates without explicit config (e.g., dora)
 - provider interfaces such as sandbox env, datasource info, examples, Python docs, getting-started snippets, and resources are optional and capability-based
 
-The proxy is the single source of truth for datasource identity (name, description, metadata). Modules that implement `ProxyDiscoverable` (clickhouse, prometheus, loki, ethnode) auto-initialize from proxy discovery. The proxy client refreshes datasource info every 5 minutes by default.
+Datasource identity is owned by the proxy. Modules that implement `ProxyDiscoverable` initialize from discovered datasources. The proxy client refreshes every 5 minutes.
 
 ### Server Startup Order
 

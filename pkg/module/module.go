@@ -30,12 +30,9 @@ type ProxyAware interface {
 	SetProxyClient(client proxy.Service)
 }
 
-// ProxyDiscoverable is an optional interface for modules that can
-// auto-initialize from proxy-discovered datasources when no explicit
-// YAML config is provided. This enables zero-config module initialization
-// where the proxy is the single source of truth for datasource identity.
+// ProxyDiscoverable modules initialize from datasources discovered via the proxy.
 type ProxyDiscoverable interface {
-	// InitFromDiscovery initializes the module using proxy-discovered datasources.
+	// InitFromDiscovery initializes the module from discovered datasources.
 	// Returns ErrNoValidConfig if no relevant datasources exist.
 	InitFromDiscovery(datasources []types.DatasourceInfo) error
 }
@@ -64,7 +61,7 @@ type ResourceRegistry interface {
 	RegisterTemplate(res types.TemplateResource)
 }
 
-// SandboxEnvProvider contributes credential-free sandbox environment values.
+// SandboxEnvProvider contributes sandbox environment variables.
 type SandboxEnvProvider interface {
 	SandboxEnv() (map[string]string, error)
 }

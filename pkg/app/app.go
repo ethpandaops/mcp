@@ -81,7 +81,7 @@ func (a *App) Build(ctx context.Context) error {
 	a.ProxyClient = proxyClient
 	a.log.WithField("url", proxyClient.URL()).Info("Proxy client connected")
 
-	// 4. Initialize modules using config YAML or proxy-discovered datasources.
+	// 4. Initialize modules.
 	if err := a.initModules(proxyClient); err != nil {
 		a.stop(ctx)
 
@@ -160,14 +160,11 @@ func (a *App) registerModules() *module.Registry {
 	return reg
 }
 
-// initModules initializes registered modules from proxy-discovered datasources.
-// The proxy is the single source of truth for datasource identity. Modules that
-// implement ProxyDiscoverable auto-initialize from discovered datasources.
-// Modules that implement DefaultEnabled (e.g., dora) activate without datasources.
+// initModules initializes all registered modules.
 func (a *App) initModules(proxyClient proxy.Client) error {
 	reg := a.ModuleRegistry
 
-	// Collect all proxy-discovered datasources.
+	// Collect discovered datasources.
 	var discovered []types.DatasourceInfo
 	discovered = append(discovered, proxyClient.ClickHouseDatasourceInfo()...)
 	discovered = append(discovered, proxyClient.PrometheusDatasourceInfo()...)
