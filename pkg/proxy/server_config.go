@@ -53,6 +53,10 @@ type HTTPServerConfig struct {
 	// ListenAddr is the address to listen on (default: ":18081").
 	ListenAddr string `yaml:"listen_addr,omitempty"`
 
+	// BaseURL is the externally-reachable URL for the proxy (e.g. "https://panda-proxy.ethpandaops.io").
+	// When set, OAuth metadata and discovery documents advertise this URL instead of http://localhost:<port>.
+	BaseURL string `yaml:"base_url,omitempty"`
+
 	// ReadTimeout is the maximum duration for reading the entire request.
 	ReadTimeout time.Duration `yaml:"read_timeout,omitempty"`
 

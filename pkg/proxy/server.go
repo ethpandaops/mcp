@@ -74,7 +74,7 @@ var (
 
 // NewServer creates a new proxy server.
 func NewServer(log logrus.FieldLogger, cfg ServerConfig) (Server, error) {
-	hostURL, port := advertisedURLs(cfg.Server.ListenAddr)
+	hostURL, port := advertisedURLs(cfg.Server)
 
 	return newServer(log, cfg, hostURL, port)
 }
@@ -493,13 +493,16 @@ func (s *server) EthNodeAvailable() bool {
 	return s.ethNodeHandler != nil
 }
 
-func advertisedURLs(listenAddr string) (string, string) {
+func advertisedURLs(cfg HTTPServerConfig) (string, string) {
 	port := "18081"
-	if _, p, err := net.SplitHostPort(listenAddr); err == nil && p != "" {
+	if _, p, err := net.SplitHostPort(cfg.ListenAddr); err == nil && p != "" {
 		port = p
 	}
 
-	url := fmt.Sprintf("http://localhost:%s", port)
+	hostURL := strings.TrimSuffix(cfg.BaseURL, "/")
+	if hostURL == "" {
+		hostURL = fmt.Sprintf("http://localhost:%s", port)
+	}
 
-	return url, port
+	return hostURL, port
 }

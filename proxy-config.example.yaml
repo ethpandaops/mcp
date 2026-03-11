@@ -11,6 +11,11 @@ server:
   # Address to listen on
   listen_addr: ":18081"
 
+  # External URL for the proxy (used in OAuth discovery metadata).
+  # Required for hosted deployments so clients discover the public URL
+  # instead of http://localhost:<port>.
+  # base_url: "https://panda-proxy.ethpandaops.io"
+
   # HTTP timeouts
   read_timeout: 30s
   write_timeout: 5m
