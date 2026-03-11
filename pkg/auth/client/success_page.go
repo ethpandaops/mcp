@@ -307,6 +307,19 @@ func buildSuccessPage(user callbackUser) string { //nolint:funlen // single HTML
     white-space: pre;
   }
 
+  /* ── Close notice ── */
+  .close-notice {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-bright);
+    text-align: center;
+  }
+
   /* ── Next steps ── */
   .next-steps {
     border-top: 1px solid var(--border);
@@ -378,6 +391,8 @@ func buildSuccessPage(user callbackUser) string { //nolint:funlen // single HTML
     %[5]s
 
     <div class="message">%[4]s</div>
+
+    <div class="close-notice">You can close this window now.</div>
 
     <div class="next-steps">
       <div class="next-label">Next steps</div>
