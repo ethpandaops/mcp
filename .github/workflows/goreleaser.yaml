@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    runs-on:
+      group: self-hosted-ghr
+      labels: [size-l-x64]
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive release suffix
+        id: suffix
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-(.+))$ ]]; then
+            echo "suffix=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Patch goreleaser config for pre-release suffix
+        if: steps.suffix.outputs.suffix != ''
+        run: |
+          SUFFIX="${{ steps.suffix.outputs.suffix }}"
+          # Order matters: patch prefixed tags first, then standalone "latest"
+          sed -i 's/"server-latest"/"server-'"${SUFFIX}"'-latest"/g' .goreleaser.yaml
+          sed -i 's/"proxy-latest"/"proxy-'"${SUFFIX}"'-latest"/g' .goreleaser.yaml
+          sed -i 's/"latest"/"'"${SUFFIX}"'-latest"/g' .goreleaser.yaml
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean --parallelism 0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
