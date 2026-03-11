@@ -74,7 +74,7 @@ var (
 
 // NewServer creates a new proxy server.
 func NewServer(log logrus.FieldLogger, cfg ServerConfig) (Server, error) {
-	hostURL, port := advertisedURLs(cfg.Server)
+	hostURL, port := advertisedURLs(cfg.Server.ListenAddr)
 
 	return newServer(log, cfg, hostURL, port)
 }
@@ -99,7 +99,7 @@ func newServer(log logrus.FieldLogger, cfg ServerConfig, hostURL, port string) (
 			Tokens:      cfg.Auth.Tokens,
 		}
 
-		authSvc, err := simpleauth.NewSimpleService(log, authCfg, s.url)
+		authSvc, err := simpleauth.NewSimpleService(log, authCfg)
 		if err != nil {
 			return nil, fmt.Errorf("creating proxy auth service: %w", err)
 		}
@@ -493,16 +493,13 @@ func (s *server) EthNodeAvailable() bool {
 	return s.ethNodeHandler != nil
 }
 
-func advertisedURLs(cfg HTTPServerConfig) (string, string) {
+func advertisedURLs(listenAddr string) (string, string) {
 	port := "18081"
-	if _, p, err := net.SplitHostPort(cfg.ListenAddr); err == nil && p != "" {
+	if _, p, err := net.SplitHostPort(listenAddr); err == nil && p != "" {
 		port = p
 	}
 
-	hostURL := strings.TrimSuffix(cfg.BaseURL, "/")
-	if hostURL == "" {
-		hostURL = fmt.Sprintf("http://localhost:%s", port)
-	}
+	url := fmt.Sprintf("http://localhost:%s", port)
 
-	return hostURL, port
+	return url, port
 }

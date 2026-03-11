@@ -24,7 +24,7 @@ func TestHandleTokenIssuesRefreshTokenAndSupportsRefreshGrant(t *testing.T) {
 			ClientSecret: "github-secret",
 		},
 		Tokens: TokensConfig{SecretKey: "test-secret"},
-	}, "http://proxy.test")
+	})
 	if err != nil {
 		t.Fatalf("NewSimpleService failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func exchangeToken(t *testing.T, svc *simpleService, values url.Values) tokenRes
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/auth/token", strings.NewReader(values.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "http://proxy.test/auth/token", strings.NewReader(values.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	svc.handleToken(rec, req)
 
