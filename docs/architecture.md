@@ -125,12 +125,10 @@ Modules are server-side integrations. They do not define new MCP tools.
 ### Datasource Discovery
 
 The proxy is the single source of truth for datasource identity (name, description, metadata).
-Modules that implement `ProxyDiscoverable` auto-initialize from proxy-discovered datasources
-when no explicit YAML config is provided. This means the `modules:` section in `config.yaml`
-is optional — a minimal server config only needs `server`, `proxy`, and `sandbox` sections.
+Modules that implement `ProxyDiscoverable` auto-initialize from proxy-discovered datasources.
+The server config has no `modules:` section — it only needs `server`, `proxy`, and `sandbox`.
 
-When YAML config exists for a module, it controls server-side behavior (e.g., schema discovery
-intervals). Datasource identity is still hydrated from the proxy.
+The proxy client refreshes datasource info every 5 minutes by default.
 
 ## Guardrails
 
@@ -138,4 +136,4 @@ intervals). Datasource identity is still hydrated from the proxy.
 - do not make sandbox code talk to `proxy`
 - do not move product semantics back into `proxy`
 - do not make `ep` reconstruct server state locally
-- use the top-level `modules:` config key for integrations
+- the proxy owns datasource identity; modules must not define their own datasource config

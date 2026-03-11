@@ -160,73 +160,38 @@ func (a *App) registerModules() *module.Registry {
 	return reg
 }
 
-// initModules initializes registered modules. For each module it tries,
-// in order: (1) explicit YAML config, (2) proxy-discovered datasources,
-// (3) DefaultEnabled with nil config. This allows a zero-config server
-// when a proxy is the single source of truth for datasource identity.
+// initModules initializes registered modules from proxy-discovered datasources.
+// The proxy is the single source of truth for datasource identity. Modules that
+// implement ProxyDiscoverable auto-initialize from discovered datasources.
+// Modules that implement DefaultEnabled (e.g., dora) activate without datasources.
 func (a *App) initModules(proxyClient proxy.Client) error {
 	reg := a.ModuleRegistry
 
-	// Collect all proxy-discovered datasources once.
-	var discoveredDatasources []types.DatasourceInfo
-	discoveredDatasources = append(discoveredDatasources, proxyClient.ClickHouseDatasourceInfo()...)
-	discoveredDatasources = append(discoveredDatasources, proxyClient.PrometheusDatasourceInfo()...)
-	discoveredDatasources = append(discoveredDatasources, proxyClient.LokiDatasourceInfo()...)
+	// Collect all proxy-discovered datasources.
+	var discovered []types.DatasourceInfo
+	discovered = append(discovered, proxyClient.ClickHouseDatasourceInfo()...)
+	discovered = append(discovered, proxyClient.PrometheusDatasourceInfo()...)
+	discovered = append(discovered, proxyClient.LokiDatasourceInfo()...)
 
 	if proxyClient.EthNodeAvailable() {
-		discoveredDatasources = append(discoveredDatasources, types.DatasourceInfo{
+		discovered = append(discovered, types.DatasourceInfo{
 			Type: "ethnode",
 			Name: "ethnode",
 		})
 	}
 
 	for _, name := range reg.All() {
-		rawYAML, err := a.cfg.ModuleConfigYAML(name)
-		if err != nil {
-			return fmt.Errorf("getting config for module %q: %w", name, err)
-		}
-
-		// Path 1: Explicit YAML config exists — use it.
-		if rawYAML != nil {
-			if err := reg.InitModule(name, rawYAML); err != nil {
-				if errors.Is(err, module.ErrNoValidConfig) {
-					a.log.WithField("module", name).Debug("Module has no valid config entries, skipping")
-
-					continue
-				}
-
-				return fmt.Errorf("initializing module %q: %w", name, err)
-			}
-
-			// Hydrate datasource identity from proxy for YAML-initialized modules.
-			// YAML config controls server-side behavior (schema discovery),
-			// but datasource identity always comes from the proxy.
-			if len(discoveredDatasources) > 0 {
-				ext := reg.Get(name)
-				if discoverable, ok := ext.(module.ProxyDiscoverable); ok {
-					if err := discoverable.InitFromDiscovery(discoveredDatasources); err != nil &&
-						!errors.Is(err, module.ErrNoValidConfig) {
-						return fmt.Errorf("hydrating datasources for module %q: %w", name, err)
-					}
-				}
-			}
-
-			continue
-		}
-
-		// Path 2: No YAML config — try proxy discovery.
-		if len(discoveredDatasources) > 0 {
-			if err := reg.InitModuleFromDiscovery(name, discoveredDatasources); err == nil {
+		// Try proxy discovery for modules that support it.
+		if len(discovered) > 0 {
+			if err := reg.InitModuleFromDiscovery(name, discovered); err == nil {
 				continue
-			} else if !errors.Is(err, module.ErrNoValidConfig) {
-				// Not a ProxyDiscoverable module or real error — check other paths.
-				if !isNotDiscoverable(err) {
-					return fmt.Errorf("initializing module %q from discovery: %w", name, err)
-				}
+			} else if !errors.Is(err, module.ErrNoValidConfig) &&
+				!strings.Contains(err.Error(), "does not implement ProxyDiscoverable") {
+				return fmt.Errorf("initializing module %q from discovery: %w", name, err)
 			}
 		}
 
-		// Path 3: DefaultEnabled modules (e.g., dora).
+		// DefaultEnabled modules (e.g., dora) activate without datasources.
 		ext := reg.Get(name)
 		if de, ok := ext.(module.DefaultEnabled); ok && de.DefaultEnabled() {
 			if err := reg.InitModule(name, nil); err != nil {
@@ -248,12 +213,6 @@ func (a *App) initModules(proxyClient proxy.Client) error {
 	a.log.WithField("initialized_count", len(reg.Initialized())).Info("Module registry built")
 
 	return nil
-}
-
-// isNotDiscoverable returns true if the error indicates the module does not
-// implement ProxyDiscoverable.
-func isNotDiscoverable(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "does not implement ProxyDiscoverable")
 }
 
 func (a *App) buildProxyClient() proxy.Client {

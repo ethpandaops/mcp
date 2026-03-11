@@ -34,11 +34,11 @@ type SchemaDiscoveryDatasource struct {
 }
 
 // IsEnabled returns whether schema discovery is enabled.
-// Defaults to true if at least one datasource is configured.
+// Defaults to true; set enabled=false to disable explicitly.
 func (c *SchemaDiscoveryConfig) IsEnabled() bool {
 	if c.Enabled != nil {
 		return *c.Enabled
 	}
 
-	return len(c.Datasources) > 0
+	return true
 }

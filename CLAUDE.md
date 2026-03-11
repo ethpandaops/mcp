@@ -21,7 +21,7 @@ See `docs/architecture.md` for the canonical boundary definition.
 - sandboxed Python calls back into `server`, never directly into `proxy`
 - `proxy` is a thin credentialed upstream gateway, not a product operations API
 - module behavior is exposed through `execute_python`, resources, docs, and search; do not add per-module MCP tools
-- use the top-level config key `modules:` for integrations
+- the proxy is the single source of truth for datasource identity; modules auto-initialize from proxy discovery
 
 ## Supported Deployment Modes
 
@@ -105,19 +105,19 @@ Five compiled-in modules are registered in `pkg/app/app.go`:
 
 Each module implements `module.Module` in `pkg/module/module.go`. Optional capability interfaces live alongside it in `pkg/module/module.go`.
 - `ProxyAware` — receives proxy client for proxy-backed operations
-- `ProxyDiscoverable` — auto-initializes from proxy-discovered datasources when no YAML config exists
+- `ProxyDiscoverable` — auto-initializes from proxy-discovered datasources
 - `CartographoorAware` — receives network discovery client
-- `DefaultEnabled` — activates without explicit config
+- `DefaultEnabled` — activates without explicit config (e.g., dora)
 - provider interfaces such as sandbox env, datasource info, examples, Python docs, getting-started snippets, and resources are optional and capability-based
 
-The proxy is the single source of truth for datasource identity (name, description, metadata). Modules that implement `ProxyDiscoverable` (clickhouse, prometheus, loki, ethnode) auto-initialize from proxy discovery when no explicit `modules:` YAML config is provided. The server config only needs to specify server-side behavior like schema discovery intervals.
+The proxy is the single source of truth for datasource identity (name, description, metadata). Modules that implement `ProxyDiscoverable` (clickhouse, prometheus, loki, ethnode) auto-initialize from proxy discovery. The proxy client refreshes datasource info every 5 minutes by default.
 
 ### Server Startup Order
 
 1. Module registry (register all compiled-in modules, no init yet)
 2. Sandbox service
-3. Proxy client (performs initial datasource discovery)
-4. Module initialization (YAML config > proxy discovery > DefaultEnabled)
+3. Proxy client (initial datasource discovery + background refresh every 5m)
+4. Module initialization (proxy discovery or DefaultEnabled)
 5. Inject proxy into `ProxyAware` modules and start modules
 6. Cartographoor client
 7. Semantic search runtime
@@ -171,14 +171,6 @@ proxy:
   auth:
     issuer_url: "..."
     client_id: "..."
-
-# modules: section is optional — datasources auto-discovered from proxy.
-# Only needed to customize server-side behavior like schema discovery.
-modules:
-  clickhouse:
-    schema_discovery:
-      refresh_interval: 15m
-      datasources: [...]  # Optional; defaults to all proxy ClickHouse datasources
 
 sandbox:
   backend: docker|gvisor
