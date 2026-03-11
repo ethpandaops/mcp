@@ -8,8 +8,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/panda/pkg/cartographoor"
-	"github.com/ethpandaops/panda/pkg/proxy"
 	"github.com/ethpandaops/panda/pkg/types"
 )
 
@@ -196,41 +194,22 @@ func (r *Registry) StopAll(ctx context.Context) {
 	}
 }
 
-// InjectProxyAccess wires proxy-backed collaborators into initialized modules
-// that declare the typed capability.
-func (r *Registry) InjectProxyAccess(client proxy.ClickHouseSchemaAccess) {
+// BindRuntimeDependencies wires shared runtime collaborators into initialized
+// modules that declare the optional capability.
+func (r *Registry) BindRuntimeDependencies(deps RuntimeDependencies) {
 	r.mu.RLock()
 	modules := make([]Module, len(r.initialized))
 	copy(modules, r.initialized)
 	r.mu.RUnlock()
 
 	for _, ext := range modules {
-		aware, ok := ext.(ProxyAware)
+		binder, ok := ext.(RuntimeDependencyBinder)
 		if !ok {
 			continue
 		}
 
-		aware.SetProxyClient(client)
-		r.log.WithField("module", ext.Name()).Debug("Injected proxy client into module")
-	}
-}
-
-// InjectCartographoorClient wires cartographoor-backed collaborators into
-// initialized modules that declare the typed capability.
-func (r *Registry) InjectCartographoorClient(client cartographoor.CartographoorClient) {
-	r.mu.RLock()
-	modules := make([]Module, len(r.initialized))
-	copy(modules, r.initialized)
-	r.mu.RUnlock()
-
-	for _, ext := range modules {
-		aware, ok := ext.(CartographoorAware)
-		if !ok {
-			continue
-		}
-
-		aware.SetCartographoorClient(client)
-		r.log.WithField("module", ext.Name()).Debug("Injected cartographoor client into module")
+		binder.BindRuntimeDependencies(deps)
+		r.log.WithField("module", ext.Name()).Debug("Bound runtime dependencies")
 	}
 }
 

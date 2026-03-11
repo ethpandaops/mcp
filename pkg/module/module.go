@@ -19,16 +19,17 @@ import (
 // This is not an error - the module should be skipped gracefully.
 var ErrNoValidConfig = errors.New("no valid configuration entries")
 
-// CartographoorAware is an optional interface for modules that need
-// network discovery data.
-type CartographoorAware interface {
-	SetCartographoorClient(client cartographoor.CartographoorClient)
+// RuntimeDependencies are the optional collaborators made available after
+// the application has started its shared runtime services.
+type RuntimeDependencies struct {
+	ProxySchemaAccess proxy.ClickHouseSchemaAccess
+	Cartographoor     cartographoor.CartographoorClient
 }
 
-// ProxyAware is an optional interface for modules that need proxy-backed
-// ClickHouse schema discovery.
-type ProxyAware interface {
-	SetProxyClient(client proxy.ClickHouseSchemaAccess)
+// RuntimeDependencyBinder is an optional interface for modules that need
+// shared runtime collaborators after initialization.
+type RuntimeDependencyBinder interface {
+	BindRuntimeDependencies(deps RuntimeDependencies)
 }
 
 // Starter is an optional interface for modules that need async startup.

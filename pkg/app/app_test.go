@@ -18,7 +18,7 @@ import (
 	"github.com/ethpandaops/panda/pkg/types"
 )
 
-func TestBuildVariantsUseSharedPipeline(t *testing.T) {
+func TestBootstrapUsesSharedPipeline(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -31,9 +31,9 @@ func TestBuildVariantsUseSharedPipeline(t *testing.T) {
 		wantCart    bool
 	}{
 		{
-			name: "build-light",
+			name: "minimal",
 			run: func(app *App, ctx context.Context) error {
-				return app.BuildLight(ctx)
+				return app.Bootstrap(ctx, BootstrapOptions{})
 			},
 			wantCalls: []string{
 				"registry-build",
@@ -44,9 +44,9 @@ func TestBuildVariantsUseSharedPipeline(t *testing.T) {
 			},
 		},
 		{
-			name: "build-with-sandbox",
+			name: "with-sandbox",
 			run: func(app *App, ctx context.Context) error {
-				return app.BuildWithSandbox(ctx)
+				return app.Bootstrap(ctx, BootstrapOptions{StartSandbox: true})
 			},
 			wantCalls: []string{
 				"registry-build",
@@ -60,9 +60,12 @@ func TestBuildVariantsUseSharedPipeline(t *testing.T) {
 			wantSandbox: true,
 		},
 		{
-			name: "build-full",
+			name: "server",
 			run: func(app *App, ctx context.Context) error {
-				return app.Build(ctx)
+				return app.Bootstrap(ctx, BootstrapOptions{
+					StartSandbox:       true,
+					StartCartographoor: true,
+				})
 			},
 			wantCalls: []string{
 				"registry-build",
@@ -119,13 +122,48 @@ func TestBuildVariantsUseSharedPipeline(t *testing.T) {
 	}
 }
 
-func TestBuildStopsStartedServicesWhenCartographoorStartFails(t *testing.T) {
+func TestBootstrapStopsStartedServicesWhenModuleStartFails(t *testing.T) {
+	t.Parallel()
+
+	app, moduleStub, sandboxStub, _, calls := newTestApp(t)
+	moduleStub.startErr = errors.New("module failed")
+
+	err := app.Bootstrap(context.Background(), BootstrapOptions{StartSandbox: true})
+	if err == nil {
+		t.Fatal("expected build to fail")
+	}
+
+	if got := err.Error(); got != "starting modules: starting module \"fake\": module failed" {
+		t.Fatalf("unexpected error: %s", got)
+	}
+
+	if sandboxStub.stopCalls != 1 {
+		t.Fatalf("sandbox stop calls = %d, want 1", sandboxStub.stopCalls)
+	}
+
+	if app.ProxyClient.(*fakeProxyClient).stopCalls != 1 {
+		t.Fatalf("proxy stop calls = %d, want 1", app.ProxyClient.(*fakeProxyClient).stopCalls)
+	}
+
+	if moduleStub.stopCalls != 1 {
+		t.Fatalf("module stop calls = %d, want 1", moduleStub.stopCalls)
+	}
+
+	if slices.Contains(*calls, "cart-start") {
+		t.Fatalf("cartographoor should not start on module failure, got calls %v", *calls)
+	}
+}
+
+func TestBootstrapStopsStartedServicesWhenCartographoorStartFails(t *testing.T) {
 	t.Parallel()
 
 	app, moduleStub, sandboxStub, cartStub, calls := newTestApp(t)
 	cartStub.startErr = errors.New("cart failed")
 
-	err := app.Build(context.Background())
+	err := app.Bootstrap(context.Background(), BootstrapOptions{
+		StartSandbox:       true,
+		StartCartographoor: true,
+	})
 	if err == nil {
 		t.Fatal("expected build to fail")
 	}
@@ -155,6 +193,30 @@ func TestBuildStopsStartedServicesWhenCartographoorStartFails(t *testing.T) {
 	}
 }
 
+func TestBuildSandboxEnvIncludesModuleEnvAndAPIURL(t *testing.T) {
+	t.Parallel()
+
+	app, moduleStub, _, _, _ := newTestApp(t)
+	moduleStub.env = map[string]string{"MODULE_ENV": "value"}
+
+	if err := app.Bootstrap(context.Background(), BootstrapOptions{}); err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+
+	env, err := app.BuildSandboxEnv()
+	if err != nil {
+		t.Fatalf("BuildSandboxEnv() error = %v", err)
+	}
+
+	if got := env["MODULE_ENV"]; got != "value" {
+		t.Fatalf("MODULE_ENV = %q, want %q", got, "value")
+	}
+
+	if got := env["ETHPANDAOPS_API_URL"]; got != "http://sandbox.example" {
+		t.Fatalf("ETHPANDAOPS_API_URL = %q, want %q", got, "http://sandbox.example")
+	}
+}
+
 func newTestApp(t *testing.T) (*App, *fakeModule, *fakeSandboxService, *fakeCartographoorClient, *[]string) {
 	t.Helper()
 
@@ -167,7 +229,8 @@ func newTestApp(t *testing.T) (*App, *fakeModule, *fakeSandboxService, *fakeCart
 	cartStub := &fakeCartographoorClient{calls: calls}
 
 	app := New(logger, &config.Config{
-		Proxy: config.ProxyConfig{URL: proxyStub.url},
+		Proxy:  config.ProxyConfig{URL: proxyStub.url},
+		Server: config.ServerConfig{SandboxURL: "http://sandbox.example/"},
 	})
 	app.moduleRegistryBuilder = func() (*module.Registry, error) {
 		*calls = append(*calls, "registry-build")
@@ -208,6 +271,7 @@ type fakeModule struct {
 	stopCalls   int
 	proxyClient proxy.ClickHouseSchemaAccess
 	cartClient  cartographoor.CartographoorClient
+	env         map[string]string
 	calls       *[]string
 }
 
@@ -231,14 +295,21 @@ func (f *fakeModule) Stop(context.Context) error {
 	return nil
 }
 
-func (f *fakeModule) SetProxyClient(client proxy.ClickHouseSchemaAccess) {
-	f.proxyClient = client
-	*f.calls = append(*f.calls, "proxy-injected")
+func (f *fakeModule) BindRuntimeDependencies(deps module.RuntimeDependencies) {
+	if deps.ProxySchemaAccess != nil && f.proxyClient == nil {
+		*f.calls = append(*f.calls, "proxy-injected")
+	}
+
+	if deps.Cartographoor != nil && f.cartClient == nil {
+		*f.calls = append(*f.calls, "cart-injected")
+	}
+
+	f.proxyClient = deps.ProxySchemaAccess
+	f.cartClient = deps.Cartographoor
 }
 
-func (f *fakeModule) SetCartographoorClient(client cartographoor.CartographoorClient) {
-	f.cartClient = client
-	*f.calls = append(*f.calls, "cart-injected")
+func (f *fakeModule) SandboxEnv() (map[string]string, error) {
+	return f.env, nil
 }
 
 type fakeSandboxService struct {
@@ -372,8 +443,8 @@ func (f *fakeCartographoorClient) GetClusters(discovery.Network) []string { retu
 
 var (
 	_ module.Module                     = (*fakeModule)(nil)
-	_ module.ProxyAware                 = (*fakeModule)(nil)
-	_ module.CartographoorAware         = (*fakeModule)(nil)
+	_ module.RuntimeDependencyBinder    = (*fakeModule)(nil)
+	_ module.SandboxEnvProvider         = (*fakeModule)(nil)
 	_ sandbox.Service                   = (*fakeSandboxService)(nil)
 	_ proxy.Client                      = (*fakeProxyClient)(nil)
 	_ cartographoor.CartographoorClient = (*fakeCartographoorClient)(nil)

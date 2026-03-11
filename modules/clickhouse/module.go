@@ -16,8 +16,9 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ module.Module            = (*Module)(nil)
-	_ module.ProxyDiscoverable = (*Module)(nil)
+	_ module.Module                  = (*Module)(nil)
+	_ module.ProxyDiscoverable       = (*Module)(nil)
+	_ module.RuntimeDependencyBinder = (*Module)(nil)
 )
 
 // Module implements the module.Module interface for ClickHouse.
@@ -40,9 +41,9 @@ func (ext *Module) Name() string { return "clickhouse" }
 // SchemaClient returns the schema discovery client, or nil if not initialized.
 func (ext *Module) SchemaClient() ClickHouseSchemaClient { return ext.schemaClient }
 
-// SetProxyClient injects the proxy collaborator used for schema discovery.
-func (ext *Module) SetProxyClient(client proxy.ClickHouseSchemaAccess) {
-	ext.proxySvc = client
+// BindRuntimeDependencies injects runtime collaborators needed after init.
+func (ext *Module) BindRuntimeDependencies(deps module.RuntimeDependencies) {
+	ext.proxySvc = deps.ProxySchemaAccess
 }
 
 // InitFromDiscovery initializes the module from discovered datasources.

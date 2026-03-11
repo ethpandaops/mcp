@@ -7,8 +7,11 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ethpandaops/panda/pkg/cartographoor"
+	"github.com/ethpandaops/panda/pkg/module"
 	"github.com/ethpandaops/panda/pkg/types"
 )
+
+var _ module.RuntimeDependencyBinder = (*Module)(nil)
 
 // Module implements the module.Module interface for the Dora module.
 type Module struct {
@@ -57,8 +60,8 @@ func (ext *Module) SandboxEnv() (map[string]string, error) {
 	}
 
 	if ext.cartographoorClient == nil {
-		// Cartographoor client not yet set - return empty.
-		// This will be populated after SetCartographoorClient is called.
+		// Cartographoor data is optional during bootstrap and becomes available
+		// after runtime dependencies are bound.
 		return nil, nil
 	}
 
@@ -153,10 +156,9 @@ print(f"View in Dora: {link}")
 `
 }
 
-// SetCartographoorClient implements module.CartographoorAware.
-// This is called by the builder to inject the cartographoor client.
-func (ext *Module) SetCartographoorClient(client cartographoor.CartographoorClient) {
-	ext.cartographoorClient = client
+// BindRuntimeDependencies implements module.RuntimeDependencyBinder.
+func (ext *Module) BindRuntimeDependencies(deps module.RuntimeDependencies) {
+	ext.cartographoorClient = deps.Cartographoor
 }
 
 func (ext *Module) ensureExamplesLoaded() error {

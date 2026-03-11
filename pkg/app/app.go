@@ -1,5 +1,4 @@
-// Package app provides the shared application core used by both the MCP server and the CLI.
-// It handles module initialization, proxy connection, sandbox setup, and semantic search indices.
+// Package app provides the shared application core used by the server runtime.
 package app
 
 import (
@@ -62,30 +61,6 @@ func (a *App) Config() *config.Config {
 	return a.cfg
 }
 
-type buildOptions struct {
-	withSandbox       bool
-	withCartographoor bool
-}
-
-// Build initializes all shared components in dependency order:
-// register modules -> sandbox -> proxy -> init modules -> module startup -> cartographoor.
-func (a *App) Build(ctx context.Context) error {
-	return a.build(ctx, buildOptions{
-		withSandbox:       true,
-		withCartographoor: true,
-	})
-}
-
-// BuildLight initializes only the module registry and proxy client.
-func (a *App) BuildLight(ctx context.Context) error {
-	return a.build(ctx, buildOptions{})
-}
-
-// BuildWithSandbox initializes modules, proxy, and sandbox, but skips cartographoor.
-func (a *App) BuildWithSandbox(ctx context.Context) error {
-	return a.build(ctx, buildOptions{withSandbox: true})
-}
-
 // Stop cleans up all started components in reverse order.
 func (a *App) Stop(ctx context.Context) error {
 	a.stop(ctx)
@@ -109,74 +84,6 @@ func (a *App) stop(ctx context.Context) {
 	if a.Sandbox != nil {
 		_ = a.Sandbox.Stop(ctx)
 	}
-}
-
-func (a *App) build(ctx context.Context, opts buildOptions) error {
-	a.log.Info("Building application dependencies")
-
-	moduleReg, err := a.moduleRegistryBuilder()
-	if err != nil {
-		return fmt.Errorf("building module registry: %w", err)
-	}
-
-	a.ModuleRegistry = moduleReg
-
-	if opts.withSandbox {
-		sandboxSvc, err := a.sandboxBuilder()
-		if err != nil {
-			return fmt.Errorf("building sandbox: %w", err)
-		}
-
-		if err := sandboxSvc.Start(ctx); err != nil {
-			return fmt.Errorf("starting sandbox: %w", err)
-		}
-
-		a.Sandbox = sandboxSvc
-		a.log.WithField("backend", sandboxSvc.Name()).Info("Sandbox service started")
-	}
-
-	proxyClient := a.proxyClientBuilder()
-	if err := proxyClient.Start(ctx); err != nil {
-		a.stop(ctx)
-
-		return fmt.Errorf("starting proxy client: %w", err)
-	}
-
-	a.ProxyClient = proxyClient
-	a.log.WithField("url", proxyClient.URL()).Info("Proxy client connected")
-
-	if err := a.initModules(proxyClient); err != nil {
-		a.stop(ctx)
-
-		return fmt.Errorf("initializing modules: %w", err)
-	}
-
-	a.injectProxyClient()
-
-	if err := a.ModuleRegistry.StartAll(ctx); err != nil {
-		a.stop(ctx)
-
-		return fmt.Errorf("starting modules: %w", err)
-	}
-
-	a.log.Info("All modules started")
-
-	if !opts.withCartographoor {
-		return nil
-	}
-
-	cartographoorClient := a.cartographoorBuilder()
-	if err := cartographoorClient.Start(ctx); err != nil {
-		a.stop(ctx)
-
-		return fmt.Errorf("starting cartographoor client: %w", err)
-	}
-
-	a.Cartographoor = cartographoorClient
-	a.log.Info("Cartographoor client started")
-	a.injectCartographoorClient()
-
-	return nil
 }
 
 // buildModuleRegistry creates a module registry and registers all compiled-in
@@ -265,12 +172,4 @@ func (a *App) newCartographoorClient() cartographoor.CartographoorClient {
 		CacheTTL: cartographoor.DefaultCacheTTL,
 		Timeout:  cartographoor.DefaultHTTPTimeout,
 	})
-}
-
-func (a *App) injectProxyClient() {
-	a.ModuleRegistry.InjectProxyAccess(a.ProxyClient)
-}
-
-func (a *App) injectCartographoorClient() {
-	a.ModuleRegistry.InjectCartographoorClient(a.Cartographoor)
 }

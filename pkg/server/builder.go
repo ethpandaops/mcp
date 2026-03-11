@@ -58,7 +58,10 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 
 	// Build shared application components (modules, sandbox, proxy, search indices).
 	application := app.New(b.log, b.cfg)
-	if err := application.Build(ctx); err != nil {
+	if err := application.Bootstrap(ctx, app.BootstrapOptions{
+		StartSandbox:       true,
+		StartCartographoor: true,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -92,8 +95,8 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 	execSvc := execsvc.New(
 		b.log,
 		application.Sandbox,
-		b.cfg,
-		application.ModuleRegistry,
+		application,
+		b.cfg.Sandbox.Timeout,
 		runtimeTokens,
 	)
 
