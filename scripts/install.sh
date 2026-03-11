@@ -226,7 +226,15 @@ main() {
 
     printf "\n"
     info "${GREEN}Installation complete!${RESET}"
-    info "Run ${BOLD}panda init${RESET} to get started."
+
+    case ":${PATH}:" in
+        *":${INSTALL_DIR}:"*)
+            info "Run ${BOLD}panda init${RESET} to get started."
+            ;;
+        *)
+            info "Restart your shell (or run ${BOLD}export PATH=\"${INSTALL_DIR}:\$PATH\"${RESET}), then run ${BOLD}panda init${RESET} to get started."
+            ;;
+    esac
 }
 
 main "$@"
