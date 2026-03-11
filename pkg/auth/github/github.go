@@ -28,9 +28,9 @@ var (
 
 const (
 	// GitHub OAuth endpoints.
-	githubAuthorizeURL = "https://github.com/login/oauth/authorize"
-	githubTokenURL     = "https://github.com/login/oauth/access_token"
-	githubAPIURL       = "https://api.github.com"
+	githubAuthorizeURL        = "https://github.com/login/oauth/authorize"
+	githubAccessTokenEndpoint = "https://github.com/login/oauth/access_token"
+	githubAPIURL              = "https://api.github.com"
 
 	// Default HTTP timeout.
 	defaultTimeout = 30 * time.Second
@@ -99,7 +99,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*T
 		"redirect_uri":  {redirectURI},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubAccessTokenEndpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: creating request: %w", ErrGitHubOAuth, err)
 	}
