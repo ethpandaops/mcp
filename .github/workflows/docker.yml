@@ -29,7 +29,9 @@ concurrency:
 
 jobs:
   goreleaser-check:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted-ghr
+      - size-l-x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,19 +53,55 @@ jobs:
         env:
           LATEST_TAG: latest
 
-      - name: Smoke test server Docker socket access
+      - name: Build server and sandbox images
         run: |
           mkdir -p linux/amd64
           cp dist/panda-server_linux_amd64_v1/panda-server linux/amd64/panda-server
           docker build -f goreleaser.server.Dockerfile -t panda-server-smoke .
-          docker run --rm \
+          docker build -f sandbox/Dockerfile -t panda-sandbox-smoke .
+
+      - name: Smoke test server sandbox initialization
+        run: |
+          # Write a minimal config that the server can parse.
+          # The server will initialize the sandbox (Docker access, image pull,
+          # network creation) before attempting to connect to the proxy.
+          cat > /tmp/smoke-config.yaml <<'CONFIG'
+          server:
+            host: "0.0.0.0"
+            port: 2480
+            transport: sse
+          sandbox:
+            image: "panda-sandbox-smoke:latest"
+            network: "panda-smoke-test"
+          proxy:
+            url: "http://localhost:19999"
+          CONFIG
+
+          # Run the server and capture logs. It will fail at proxy connection,
+          # but we check that sandbox initialization completed successfully.
+          LOGS=$(docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -v /tmp/smoke-config.yaml:/app/config.yaml:ro \
             --group-add "$(stat -c '%g' /var/run/docker.sock)" \
             panda-server-smoke \
-            docker info --format '{{.ServerVersion}}'
+            serve --config /app/config.yaml 2>&1 || true)
+
+          echo "$LOGS"
+
+          if echo "$LOGS" | grep -q "Sandbox service started"; then
+            echo "Smoke test passed: sandbox initialized successfully"
+          else
+            echo "Smoke test failed: sandbox did not initialize"
+            exit 1
+          fi
+
+          # Clean up the network created by the server.
+          docker network rm panda-smoke-test 2>/dev/null || true
 
   build-sandbox:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted-ghr
+      - size-m-x64
     steps:
       - uses: actions/checkout@v4
 

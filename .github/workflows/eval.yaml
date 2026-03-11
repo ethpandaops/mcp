@@ -40,7 +40,9 @@ on:
 
 jobs:
   evaluate:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted-ghr
+      - size-m-x64
     timeout-minutes: 60
 
     steps:
@@ -224,7 +226,9 @@ jobs:
           comment_mode: always
 
   compare-models:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted-ghr
+      - size-m-x64
     needs: evaluate
     if: github.event_name == 'workflow_dispatch' && inputs.model == 'claude-sonnet-4-5'
 

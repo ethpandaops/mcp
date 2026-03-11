@@ -6,7 +6,9 @@ on:
 
 jobs:
   meta:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted-ghr
+      - size-m-x64
     outputs:
       short-sha: ${{ steps.sha.outputs.short }}
     steps:
