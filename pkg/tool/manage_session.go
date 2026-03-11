@@ -145,35 +145,9 @@ func (h *manageSessionHandler) handleList(ctx context.Context, ownerID string) (
 		return CallToolError(fmt.Errorf("listing sessions: %w", err)), nil
 	}
 
-	details := make([]SessionDetail, 0, len(sessions))
-	for _, s := range sessions {
-		workspaceFiles := make([]WorkspaceFileInfo, 0, len(s.WorkspaceFiles))
-		for _, f := range s.WorkspaceFiles {
-			workspaceFiles = append(workspaceFiles, WorkspaceFileInfo{
-				Name: f.Name,
-				Size: formatSize(f.Size),
-			})
-		}
-
-		details = append(details, SessionDetail{
-			SessionID:      s.ID,
-			CreatedAt:      s.CreatedAt.Format(time.RFC3339),
-			LastUsed:       s.LastUsed.Format(time.RFC3339),
-			TTLRemaining:   s.TTLRemaining.Round(time.Second).String(),
-			WorkspaceFiles: workspaceFiles,
-		})
-	}
-
-	response := &ManageSessionResponse{
-		Operation:   "list",
-		Sessions:    details,
-		Total:       len(details),
-		MaxSessions: maxSessions,
-	}
-
 	h.log.WithField("count", len(sessions)).Debug("Listed sessions")
 
-	return marshalManageSessionResponse(response)
+	return marshalManageSessionResponse(buildListSessionsResponse(sessions, maxSessions))
 }
 
 func (h *manageSessionHandler) handleCreate(ctx context.Context, ownerID string) (*mcp.CallToolResult, error) {
@@ -184,21 +158,9 @@ func (h *manageSessionHandler) handleCreate(ctx context.Context, ownerID string)
 		return CallToolError(err), nil
 	}
 
-	response := &ManageSessionResponse{
-		Operation: "create",
-		Session: &ManagedSessionSummary{
-			SessionID: created.ID,
-		},
-		Message: "Session created. Pass this session_id to execute_python.",
-	}
-
-	if created.TTLRemaining > 0 {
-		response.Session.TTLRemaining = created.TTLRemaining.Round(time.Second).String()
-	}
-
 	h.log.WithField("session_id", created.ID).Info("Created session")
 
-	return marshalManageSessionResponse(response)
+	return marshalManageSessionResponse(buildCreateSessionResponse(created))
 }
 
 func (h *manageSessionHandler) handleDestroy(
@@ -216,13 +178,65 @@ func (h *manageSessionHandler) handleDestroy(
 
 	h.log.WithField("session_id", sessionID).Info("Destroyed session")
 
-	return marshalManageSessionResponse(&ManageSessionResponse{
+	return marshalManageSessionResponse(buildDestroySessionResponse(sessionID))
+}
+
+func buildListSessionsResponse(sessions []sandbox.SessionInfo, maxSessions int) *ManageSessionResponse {
+	details := make([]SessionDetail, 0, len(sessions))
+	for _, session := range sessions {
+		details = append(details, sessionDetailFromInfo(session))
+	}
+
+	return &ManageSessionResponse{
+		Operation:   "list",
+		Sessions:    details,
+		Total:       len(details),
+		MaxSessions: maxSessions,
+	}
+}
+
+func sessionDetailFromInfo(session sandbox.SessionInfo) SessionDetail {
+	workspaceFiles := make([]WorkspaceFileInfo, 0, len(session.WorkspaceFiles))
+	for _, file := range session.WorkspaceFiles {
+		workspaceFiles = append(workspaceFiles, WorkspaceFileInfo{
+			Name: file.Name,
+			Size: formatSize(file.Size),
+		})
+	}
+
+	return SessionDetail{
+		SessionID:      session.ID,
+		CreatedAt:      session.CreatedAt.Format(time.RFC3339),
+		LastUsed:       session.LastUsed.Format(time.RFC3339),
+		TTLRemaining:   session.TTLRemaining.Round(time.Second).String(),
+		WorkspaceFiles: workspaceFiles,
+	}
+}
+
+func buildCreateSessionResponse(created *sandbox.CreatedSession) *ManageSessionResponse {
+	response := &ManageSessionResponse{
+		Operation: "create",
+		Session: &ManagedSessionSummary{
+			SessionID: created.ID,
+		},
+		Message: "Session created. Pass this session_id to execute_python.",
+	}
+
+	if created.TTLRemaining > 0 {
+		response.Session.TTLRemaining = created.TTLRemaining.Round(time.Second).String()
+	}
+
+	return response
+}
+
+func buildDestroySessionResponse(sessionID string) *ManageSessionResponse {
+	return &ManageSessionResponse{
 		Operation: "destroy",
 		Session: &ManagedSessionSummary{
 			SessionID: sessionID,
 		},
 		Message: fmt.Sprintf("Session %s has been destroyed.", sessionID),
-	})
+	}
 }
 
 func marshalManageSessionResponse(response *ManageSessionResponse) (*mcp.CallToolResult, error) {

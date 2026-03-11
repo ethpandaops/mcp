@@ -132,13 +132,110 @@ func TestSessionManagerGetRejectsWrongOwner(t *testing.T) {
 	assert.Contains(t, err.Error(), "not owned by caller")
 }
 
+func TestSessionManagerCleanupExpiredUsesInjectedClock(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.March, 11, 18, 0, 0, 0, time.UTC)
+	cleaned := []string{}
+	manager := newTestSessionManagerWithListAll(
+		config.SessionConfig{
+			TTL:         5 * time.Minute,
+			MaxDuration: time.Hour,
+			MaxSessions: 4,
+		},
+		nil,
+		func(context.Context) ([]*SessionContainer, error) {
+			return []*SessionContainer{
+				{
+					ContainerID: "container-max",
+					SessionID:   "session-max",
+					OwnerID:     "owner-1",
+					CreatedAt:   now.Add(-2 * time.Hour),
+				},
+				{
+					ContainerID: "container-ttl",
+					SessionID:   "session-ttl",
+					OwnerID:     "owner-1",
+					CreatedAt:   now.Add(-10 * time.Minute),
+				},
+			}, nil
+		},
+		func(_ context.Context, containerID string) error {
+			cleaned = append(cleaned, containerID)
+			return nil
+		},
+	)
+	manager.now = func() time.Time { return now }
+	manager.RecordAccess("session-ttl")
+	manager.mu.Lock()
+	manager.lastUsed["session-ttl"] = now.Add(-10 * time.Minute)
+	manager.mu.Unlock()
+
+	manager.cleanupExpired(context.Background())
+
+	assert.ElementsMatch(t, []string{"container-max", "container-ttl"}, cleaned)
+	assert.True(t, manager.GetLastUsed("session-max").IsZero())
+	assert.True(t, manager.GetLastUsed("session-ttl").IsZero())
+}
+
+func TestSessionManagerStopCleansUpContainersAndResetsLastUsed(t *testing.T) {
+	t.Parallel()
+
+	cleaned := []string{}
+	manager := newTestSessionManagerWithListAll(
+		config.SessionConfig{
+			TTL:         time.Hour,
+			MaxDuration: 4 * time.Hour,
+			MaxSessions: 4,
+		},
+		nil,
+		func(context.Context) ([]*SessionContainer, error) {
+			return []*SessionContainer{
+				{ContainerID: "container-1", SessionID: "session-1"},
+				{ContainerID: "container-2", SessionID: "session-2"},
+			}, nil
+		},
+		func(_ context.Context, containerID string) error {
+			cleaned = append(cleaned, containerID)
+			return nil
+		},
+	)
+	manager.RecordAccess("session-1")
+	manager.RecordAccess("session-2")
+
+	err := manager.Stop(context.Background())
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{"container-1", "container-2"}, cleaned)
+	assert.True(t, manager.GetLastUsed("session-1").IsZero())
+	assert.True(t, manager.GetLastUsed("session-2").IsZero())
+}
+
 func newTestSessionManager(
 	cfg config.SessionConfig,
 	containerLister ContainerLister,
 	cleanup func(context.Context, string) error,
 ) *SessionManager {
+	return newTestSessionManagerWithListAll(
+		cfg,
+		containerLister,
+		func(context.Context) ([]*SessionContainer, error) { return nil, nil },
+		cleanup,
+	)
+}
+
+func newTestSessionManagerWithListAll(
+	cfg config.SessionConfig,
+	containerLister ContainerLister,
+	containerListAll ContainerListAll,
+	cleanup func(context.Context, string) error,
+) *SessionManager {
 	if containerLister == nil {
 		containerLister = func(context.Context, string) (*SessionContainer, error) { return nil, nil }
+	}
+
+	if containerListAll == nil {
+		containerListAll = func(context.Context) ([]*SessionContainer, error) { return nil, nil }
 	}
 
 	if cleanup == nil {
@@ -149,7 +246,7 @@ func newTestSessionManager(
 		cfg,
 		logrus.New(),
 		containerLister,
-		func(context.Context) ([]*SessionContainer, error) { return nil, nil },
+		containerListAll,
 		cleanup,
 	)
 }
