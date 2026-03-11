@@ -79,6 +79,9 @@ type AuthConfig struct {
 
 	// AccessTokenTTL is the lifetime of proxy-issued access tokens.
 	AccessTokenTTL time.Duration `yaml:"access_token_ttl,omitempty"`
+
+	// SuccessPage customizes the OAuth callback success page shown in the browser.
+	SuccessPage *simpleauth.SuccessPageConfig `yaml:"success_page,omitempty"`
 }
 
 // ClickHouseClusterConfig holds ClickHouse cluster configuration.

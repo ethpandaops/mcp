@@ -306,8 +306,12 @@ func (c *client) startCallbackServer(_ context.Context, expectedState string, co
 		}
 
 		user := callbackUser{
-			Login:     r.URL.Query().Get("login"),
-			AvatarURL: r.URL.Query().Get("avatar_url"),
+			Login:         r.URL.Query().Get("login"),
+			AvatarURL:     r.URL.Query().Get("avatar_url"),
+			Tagline:       r.URL.Query().Get("sp_tagline"),
+			MediaType:     r.URL.Query().Get("sp_media_type"),
+			MediaURL:      r.URL.Query().Get("sp_media_url"),
+			MediaASCIIB64: r.URL.Query().Get("sp_media_ascii"),
 		}
 
 		if orgsParam := r.URL.Query().Get("orgs"); orgsParam != "" {

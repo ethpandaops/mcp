@@ -36,6 +36,26 @@ auth:
   # tokens:
   #   secret_key: "${PROXY_TOKEN_SECRET}"
 
+  # Customize the OAuth callback success page shown in the browser.
+  # Rules are evaluated in order; the first match wins.
+  # success_page:
+  #   rules:
+  #     - match:
+  #         orgs: ["ethpandaops"]
+  #         users: ["samcm", "mattevans"]
+  #       media:
+  #         type: ascii
+  #         ascii_art_base64: "base64-encoded-art-here"
+  #       tagline: "Enjoy debugging your devnet champ"
+  #     - match:
+  #         orgs: ["ethpandaops"]
+  #       media:
+  #         type: gif
+  #         url: "https://example.com/cool.gif"
+  #       tagline: "Enjoy debugging your devnet champ"
+  #   default:
+  #     tagline: "You can close this window and return to your terminal."
+
 # ClickHouse clusters
 clickhouse:
   - name: xatu
