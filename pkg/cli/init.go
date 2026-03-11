@@ -30,22 +30,25 @@ var (
 	initSandboxImage string
 	initServerImage  string
 	initSkipDocker   bool
+	initSkipAuth     bool
+	initSkipStart    bool
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Set up panda: write config, pull images, and generate docker-compose",
+	Short: "Set up panda and get running in one command",
 	Long: `Initialize panda for first-time use.
 
-This command:
-  1. Checks that Docker is available
-  2. Checks that docker compose CLI is available
-  3. Pulls the server and sandbox container images
-  4. Writes a config file to ~/.config/panda/config.yaml
-  5. Writes a docker-compose file to ~/.config/panda/docker-compose.yaml
+This command runs the full setup:
+  1. Checks that Docker and docker compose are available
+  2. Pulls the server and sandbox container images
+  3. Writes config and docker-compose files to ~/.config/panda/
+  4. Authenticates against the proxy (opens browser)
+  5. Starts the server container
 
-Use --skip-docker to skip the Docker check and image pulls (e.g., if
-you want to configure panda before Docker is installed).`,
+Use --skip-docker to skip the Docker check and image pulls.
+Use --skip-auth to skip the authentication step.
+Use --skip-start to skip starting the server.`,
 	RunE: runInit,
 }
 
@@ -57,6 +60,8 @@ func init() {
 	initCmd.Flags().StringVar(&initSandboxImage, "sandbox-image", defaultSandboxImage, "sandbox container image to pull")
 	initCmd.Flags().StringVar(&initServerImage, "server-image", defaultServerImage, "server container image to pull")
 	initCmd.Flags().BoolVar(&initSkipDocker, "skip-docker", false, "skip Docker check and image pull")
+	initCmd.Flags().BoolVar(&initSkipAuth, "skip-auth", false, "skip authentication step")
+	initCmd.Flags().BoolVar(&initSkipStart, "skip-start", false, "skip starting the server")
 }
 
 func runInit(_ *cobra.Command, _ []string) error {
@@ -95,7 +100,7 @@ func runInit(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// 3. Print summary and next steps.
+	// 3. Print config summary.
 	fmt.Println()
 
 	if configCreated > 0 {
@@ -110,11 +115,44 @@ func runInit(_ *cobra.Command, _ []string) error {
 		fmt.Printf("Docker Compose already exists: %s (use --force to overwrite)\n", composePath)
 	}
 
-	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Printf("  1. Run 'panda auth login' to authenticate against %s\n", initProxyURL)
-	fmt.Println("  2. Start the server: panda server start")
-	fmt.Println("  3. Or use the CLI directly: panda datasources")
+	// 4. Authenticate against the proxy.
+	if !initSkipAuth {
+		fmt.Println()
+		fmt.Println("Authenticating...")
+
+		if err := runAuthLogin(nil, nil); err != nil {
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+	} else {
+		fmt.Println("\nSkipping authentication (--skip-auth)")
+	}
+
+	// 5. Start the server.
+	switch {
+	case initSkipStart:
+		fmt.Println("\nSkipping server start (--skip-start)")
+		fmt.Println("Run 'panda server start' when ready")
+	case initSkipDocker:
+		fmt.Println("\nSkipping server start (Docker was skipped)")
+		fmt.Println("Run 'panda server start' when Docker is available")
+	default:
+		fmt.Println()
+		fmt.Println("Starting server...")
+
+		compose, err := resolveComposeFile()
+		if err != nil {
+			return err
+		}
+
+		if err := runDockerCompose(compose, "up", "-d"); err != nil {
+			return fmt.Errorf("starting server: %w", err)
+		}
+
+		fmt.Println()
+		fmt.Println("Server is starting at http://localhost:2480")
+		fmt.Println("Run 'panda server status' to check health")
+		fmt.Println("Run 'panda datasources' to list available datasources")
+	}
 
 	return nil
 }
