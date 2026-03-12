@@ -3,7 +3,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -71,16 +70,7 @@ func (h *ClickHouseHandler) createCluster(cfg ClickHouseConfig) *clickhouseClust
 	// Create reverse proxy.
 	rp := httputil.NewSingleHostReverseProxy(targetURL)
 
-	// Configure transport with TLS settings.
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: cfg.SkipVerify, //nolint:gosec // User-configured
-		},
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
-	}
-	rp.Transport = transport
+	rp.Transport = newProxyTransport(cfg.SkipVerify)
 
 	// Customize the director to add auth and database.
 	originalDirector := rp.Director

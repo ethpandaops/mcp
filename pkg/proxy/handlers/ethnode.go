@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -150,11 +149,7 @@ func (h *EthNodeHandler) getOrCreateProxy(host string) *httputil.ReverseProxy {
 
 	rp := httputil.NewSingleHostReverseProxy(targetURL)
 
-	rp.Transport = &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
-	}
+	rp.Transport = newProxyTransport(false)
 
 	cfg := h.cfg
 	originalDirector := rp.Director
