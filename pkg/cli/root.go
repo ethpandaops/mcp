@@ -20,6 +20,10 @@ var (
 	log      = logrus.New()
 )
 
+// updateResult carries the latest version from the background check.
+// A nil value means the check failed or was skipped.
+var updateResult = make(chan *string, 1)
+
 // skipUpdateCheckCommands lists commands that should not trigger
 // update checks or display update notifications.
 var skipUpdateCheckCommands = map[string]bool{
@@ -48,7 +52,6 @@ Run 'panda <command> --help' for details on any command.`,
 			FullTimestamp: true,
 		})
 
-		// Kick off a background update check if the cache is stale.
 		if !skipUpdateCheckCommands[cmd.Name()] {
 			go backgroundUpdateCheck()
 		}
@@ -90,14 +93,8 @@ func init() {
 }
 
 // backgroundUpdateCheck queries GitHub for the latest release and
-// updates the local cache file. Runs as a fire-and-forget goroutine;
-// errors are silently ignored.
+// sends the result through the updateResult channel.
 func backgroundUpdateCheck() {
-	cache, _ := github.LoadCache()
-	if cache != nil && !cache.IsStale() {
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -105,27 +102,32 @@ func backgroundUpdateCheck() {
 
 	release, err := checker.LatestRelease(ctx)
 	if err != nil {
+		updateResult <- nil
 		return
 	}
 
-	_ = github.SaveCache(&github.UpdateCache{
-		LatestVersion: release.TagName,
-		CheckedAt:     time.Now(),
-	})
+	updateResult <- &release.TagName
 }
 
-// printUpdateNotification reads the cached version check and prints
-// a one-line update notice to stderr if a newer version is available.
+// printUpdateNotification waits briefly for the background check and
+// prints a one-line update notice to stderr if a newer version exists.
 func printUpdateNotification() {
-	cache, err := github.LoadCache()
-	if err != nil || cache == nil {
+	var latestVersion *string
+
+	select {
+	case latestVersion = <-updateResult:
+	case <-time.After(2 * time.Second):
 		return
 	}
 
-	if version.IsNewer(version.Version, cache.LatestVersion) {
+	if latestVersion == nil {
+		return
+	}
+
+	if version.IsNewer(version.Version, *latestVersion) {
 		fmt.Fprintf(os.Stderr,
 			"\nUpdate available: %s -> %s. Run 'panda upgrade' to update.\n",
-			version.Version, cache.LatestVersion,
+			version.Version, *latestVersion,
 		)
 	}
 }

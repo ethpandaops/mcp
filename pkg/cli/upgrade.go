@@ -121,12 +121,6 @@ func runUpgrade(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Update the version check cache so the notification goes away.
-	_ = github.SaveCache(&github.UpdateCache{
-		LatestVersion: release.TagName,
-		CheckedAt:     time.Now(),
-	})
-
 	fmt.Println()
 	fmt.Println("Upgrade complete!")
 
