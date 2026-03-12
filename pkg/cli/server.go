@@ -86,7 +86,7 @@ func init() {
 }
 
 func runServerStart(_ *cobra.Command, _ []string) error {
-	return runDockerCompose(resolveComposeFile(), "up", "-d")
+	return runDockerCompose(resolveComposeFile(), "up", "-d", "--force-recreate")
 }
 
 func runServerStop(_ *cobra.Command, _ []string) error {
