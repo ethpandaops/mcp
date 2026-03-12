@@ -1,6 +1,6 @@
-# panda
+# 🐼 Panda
 
-An MCP server for Ethereum network analytics. Agents execute Python in sandboxed containers with access to ClickHouse, Prometheus, Loki, and Ethereum node data via [Xatu](https://github.com/ethpandaops/xatu).
+Your gateway to the [ethpandaops](https://github.com/ethpandaops) ecosystem. It's a CLI, an MCP server, and a sandboxed Python runtime that talks to ClickHouse, Prometheus, Loki, and Ethereum nodes so you don't have to wrangle credentials or know each API individually.
 
 Read more: https://www.anthropic.com/engineering/code-execution-with-mcp
 
@@ -28,14 +28,14 @@ Read more: https://www.anthropic.com/engineering/code-execution-with-mcp
 │                         └──────────────┬───────────────────┘   │
 │                                        │                       │
 └────────────────────────────────────────┼───────────────────────┘
-                                         │
+                                         │ GitHub OAuth
                               ┌──────────▼──────────┐
                               │ Proxy               │
                               │ (remote or local)   │
                               │                     │
-                              │  Holds credentials  │
-                              │  for all upstream    │
-                              │  datasources         │
+                              │  GitHub OAuth gate   │
+                              │  + credentials for   │
+                              │  all datasources     │
                               └──────────┬──────────┘
                                          │
                     ┌────────────────────┬┴───────────────────┐
@@ -184,14 +184,6 @@ panda server status     # Show container status and health
 panda server logs       # Stream server logs
 panda server update     # Pull latest images and restart
 ```
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `execute_python` | Run Python in a sandboxed container with the `ethpandaops` library |
-| `manage_session` | List, create, or destroy persistent sandbox sessions |
-| `search` | Semantic search over examples and runbooks |
 
 ## Development
 
