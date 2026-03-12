@@ -17,8 +17,12 @@ var (
 
 // UserAgent returns the User-Agent string for outbound HTTP requests.
 func UserAgent() string {
-	return "panda/" + Version
+	return userAgent
 }
+
+// userAgent is computed once at init since Version is set via ldflags and
+// never changes at runtime.
+var userAgent = "panda/" + Version
 
 // Transport wraps an http.RoundTripper to inject the panda User-Agent header.
 type Transport struct {
@@ -27,21 +31,17 @@ type Transport struct {
 
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	r := req.Clone(req.Context())
-	r.Header.Set("User-Agent", UserAgent())
+	// Shallow-copy the request and clone only the header map to avoid the
+	// cost of a full req.Clone while still satisfying the RoundTripper
+	// contract (do not mutate the original request).
+	r := *req
+	r.Header = req.Header.Clone()
+	r.Header.Set("User-Agent", userAgent)
 
 	base := t.Base
 	if base == nil {
 		base = http.DefaultTransport
 	}
 
-	return base.RoundTrip(r)
-}
-
-// NewHTTPClient returns an http.Client that sets the panda User-Agent on
-// every outbound request.
-func NewHTTPClient() *http.Client {
-	return &http.Client{
-		Transport: &Transport{},
-	}
+	return base.RoundTrip(&r)
 }
