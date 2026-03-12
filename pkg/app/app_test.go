@@ -217,6 +217,289 @@ func TestBuildSandboxEnvIncludesModuleEnvAndAPIURL(t *testing.T) {
 	}
 }
 
+func TestBootstrapReturnsModuleRegistryBuildError(t *testing.T) {
+	t.Parallel()
+
+	app := New(logrus.New(), &config.Config{})
+	app.moduleRegistryBuilder = func() (*module.Registry, error) {
+		return nil, errors.New("registry failed")
+	}
+
+	err := app.Bootstrap(context.Background(), BootstrapOptions{})
+	if err == nil {
+		t.Fatal("expected bootstrap to fail")
+	}
+
+	if got := err.Error(); got != "building module registry: registry failed" {
+		t.Fatalf("unexpected error: %s", got)
+	}
+}
+
+func TestStartSandboxSurfacesBuildAndStartErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("builder error", func(t *testing.T) {
+		t.Parallel()
+
+		app, _, _, _, _ := newTestApp(t)
+		app.sandboxBuilder = func() (sandbox.Service, error) {
+			return nil, errors.New("sandbox builder failed")
+		}
+
+		err := app.startSandbox(context.Background())
+		if err == nil {
+			t.Fatal("expected startSandbox to fail")
+		}
+
+		if got := err.Error(); got != "building sandbox: sandbox builder failed" {
+			t.Fatalf("unexpected error: %s", got)
+		}
+	})
+
+	t.Run("start error", func(t *testing.T) {
+		t.Parallel()
+
+		app, _, sandboxStub, _, _ := newTestApp(t)
+		sandboxStub.startErr = errors.New("sandbox start failed")
+
+		err := app.startSandbox(context.Background())
+		if err == nil {
+			t.Fatal("expected startSandbox to fail")
+		}
+
+		if got := err.Error(); got != "starting sandbox: sandbox start failed" {
+			t.Fatalf("unexpected error: %s", got)
+		}
+
+		if app.Sandbox != nil {
+			t.Fatal("sandbox should not be assigned when start fails")
+		}
+	})
+}
+
+func TestBootstrapStopsStartedServicesWhenProxyStartFails(t *testing.T) {
+	t.Parallel()
+
+	app, moduleStub, sandboxStub, _, calls := newTestApp(t)
+	proxyStub := &fakeProxyClient{
+		url:      "http://proxy",
+		startErr: errors.New("proxy failed"),
+		calls:    calls,
+	}
+	app.proxyClientBuilder = func() proxy.Client {
+		*calls = append(*calls, "proxy-build")
+		return proxyStub
+	}
+
+	err := app.Bootstrap(context.Background(), BootstrapOptions{StartSandbox: true})
+	if err == nil {
+		t.Fatal("expected bootstrap to fail")
+	}
+
+	if got := err.Error(); got != "starting proxy client: proxy failed" {
+		t.Fatalf("unexpected error: %s", got)
+	}
+
+	if sandboxStub.stopCalls != 1 {
+		t.Fatalf("sandbox stop calls = %d, want 1", sandboxStub.stopCalls)
+	}
+
+	if moduleStub.stopCalls != 1 {
+		t.Fatalf("module stop calls = %d, want 1", moduleStub.stopCalls)
+	}
+
+	if moduleStub.startCalls != 0 {
+		t.Fatalf("module start calls = %d, want 0", moduleStub.startCalls)
+	}
+
+	if proxyStub.stopCalls != 0 {
+		t.Fatalf("proxy stop calls = %d, want 0", proxyStub.stopCalls)
+	}
+
+	if slices.Contains(*calls, "cart-start") {
+		t.Fatalf("cartographoor should not start on proxy failure, got calls %v", *calls)
+	}
+}
+
+func TestAppConfigStopAndBuildModuleRegistry(t *testing.T) {
+	t.Parallel()
+
+	app, moduleStub, sandboxStub, cartStub, _ := newTestApp(t)
+	if got := app.Config(); got != app.cfg {
+		t.Fatal("Config should return the app configuration pointer")
+	}
+
+	registry, err := app.buildModuleRegistry()
+	if err != nil {
+		t.Fatalf("buildModuleRegistry failed: %v", err)
+	}
+
+	gotModules := registry.All()
+	slices.Sort(gotModules)
+
+	if !slices.Equal(gotModules, []string{"clickhouse", "dora", "ethnode", "loki", "prometheus"}) {
+		t.Fatalf("unexpected compiled module names: %v", gotModules)
+	}
+
+	if err := app.Bootstrap(context.Background(), BootstrapOptions{
+		StartSandbox:       true,
+		StartCartographoor: true,
+	}); err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+
+	if err := app.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	if cartStub.stopCalls != 1 {
+		t.Fatalf("cartographoor stop calls = %d, want 1", cartStub.stopCalls)
+	}
+
+	if moduleStub.stopCalls != 1 {
+		t.Fatalf("module stop calls = %d, want 1", moduleStub.stopCalls)
+	}
+
+	if app.ProxyClient.(*fakeProxyClient).stopCalls != 1 {
+		t.Fatalf("proxy stop calls = %d, want 1", app.ProxyClient.(*fakeProxyClient).stopCalls)
+	}
+
+	if sandboxStub.stopCalls != 1 {
+		t.Fatalf("sandbox stop calls = %d, want 1", sandboxStub.stopCalls)
+	}
+}
+
+func TestBuildSandboxEnvErrorsAndSandboxAPIURLFallbacks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("module registry is required", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(logrus.New(), &config.Config{})
+
+		_, err := app.BuildSandboxEnv()
+		if err == nil {
+			t.Fatal("expected BuildSandboxEnv to fail")
+		}
+
+		if got := err.Error(); got != "module registry is not initialized" {
+			t.Fatalf("unexpected error: %s", got)
+		}
+	})
+
+	t.Run("module sandbox env errors are wrapped", func(t *testing.T) {
+		t.Parallel()
+
+		app, moduleStub, _, _, _ := newTestApp(t)
+		moduleStub.envErr = errors.New("env failed")
+
+		if err := app.Bootstrap(context.Background(), BootstrapOptions{}); err != nil {
+			t.Fatalf("bootstrap failed: %v", err)
+		}
+
+		_, err := app.BuildSandboxEnv()
+		if err == nil {
+			t.Fatal("expected BuildSandboxEnv to fail")
+		}
+
+		if got := err.Error(); got != "collecting sandbox env: getting sandbox env for module \"fake\": env failed" {
+			t.Fatalf("unexpected error: %s", got)
+		}
+	})
+
+	t.Run("fallback API URL uses host.docker.internal", func(t *testing.T) {
+		t.Parallel()
+
+		logger := logrus.New()
+		calls := &[]string{}
+		mod := &fakeModule{
+			name:  "fake",
+			env:   map[string]string{"MODULE_ENV": "value"},
+			calls: calls,
+		}
+		app := New(logger, &config.Config{
+			Server: config.ServerConfig{Port: 3030},
+		})
+		app.ModuleRegistry = newInitializedRegistry(t, logger, mod)
+
+		env, err := app.BuildSandboxEnv()
+		if err != nil {
+			t.Fatalf("BuildSandboxEnv failed: %v", err)
+		}
+
+		if got := env["ETHPANDAOPS_API_URL"]; got != "http://host.docker.internal:3030" {
+			t.Fatalf("ETHPANDAOPS_API_URL = %q, want %q", got, "http://host.docker.internal:3030")
+		}
+	})
+
+	t.Run("sandboxAPIURL honors precedence", func(t *testing.T) {
+		t.Parallel()
+
+		var nilApp *App
+		if got := nilApp.sandboxAPIURL(); got != "" {
+			t.Fatalf("sandboxAPIURL(nil app) = %q, want empty string", got)
+		}
+
+		appWithNilConfig := &App{}
+		if got := appWithNilConfig.sandboxAPIURL(); got != "" {
+			t.Fatalf("sandboxAPIURL(nil config) = %q, want empty string", got)
+		}
+
+		cases := []struct {
+			name string
+			cfg  *config.Config
+			want string
+		}{
+			{
+				name: "sandbox_url",
+				cfg: &config.Config{
+					Server: config.ServerConfig{
+						SandboxURL: " https://sandbox.example/ ",
+						BaseURL:    "https://base.example/",
+						URL:        "https://url.example/",
+						Port:       9999,
+					},
+				},
+				want: "https://sandbox.example",
+			},
+			{
+				name: "base_url",
+				cfg: &config.Config{
+					Server: config.ServerConfig{
+						BaseURL: "https://base.example/",
+						URL:     "https://url.example/",
+						Port:    9999,
+					},
+				},
+				want: "https://base.example",
+			},
+			{
+				name: "server_url",
+				cfg: &config.Config{
+					Server: config.ServerConfig{
+						URL:  "https://url.example/",
+						Port: 9999,
+					},
+				},
+				want: "https://url.example",
+			},
+			{
+				name: "default_port",
+				cfg: &config.Config{
+					Server: config.ServerConfig{},
+				},
+				want: "http://host.docker.internal:2480",
+			},
+		}
+
+		for _, tc := range cases {
+			if got := (&App{cfg: tc.cfg}).sandboxAPIURL(); got != tc.want {
+				t.Fatalf("%s: sandboxAPIURL() = %q, want %q", tc.name, got, tc.want)
+			}
+		}
+	})
+}
+
 func newTestApp(t *testing.T) (*App, *fakeModule, *fakeSandboxService, *fakeCartographoorClient, *[]string) {
 	t.Helper()
 
@@ -272,6 +555,7 @@ type fakeModule struct {
 	proxyClient proxy.ClickHouseSchemaAccess
 	cartClient  cartographoor.CartographoorClient
 	env         map[string]string
+	envErr      error
 	calls       *[]string
 }
 
@@ -309,19 +593,24 @@ func (f *fakeModule) BindRuntimeDependencies(deps module.RuntimeDependencies) {
 }
 
 func (f *fakeModule) SandboxEnv() (map[string]string, error) {
+	if f.envErr != nil {
+		return nil, f.envErr
+	}
+
 	return f.env, nil
 }
 
 type fakeSandboxService struct {
 	startCalls int
 	stopCalls  int
+	startErr   error
 	calls      *[]string
 }
 
 func (f *fakeSandboxService) Start(context.Context) error {
 	f.startCalls++
 	*f.calls = append(*f.calls, "sandbox-start")
-	return nil
+	return f.startErr
 }
 
 func (f *fakeSandboxService) Stop(context.Context) error {

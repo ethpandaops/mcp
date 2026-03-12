@@ -8,13 +8,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/ethpandaops/panda/pkg/configpath"
+	"github.com/ethpandaops/panda/pkg/configutil"
 )
 
 // Config is the main configuration structure.
@@ -148,7 +148,7 @@ func load(path string, validate bool) (*Config, error) {
 	}
 
 	// Substitute environment variables
-	substituted, err := substituteEnvVars(string(data))
+	substituted, err := configutil.SubstituteEnvVars(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("substituting env vars: %w", err)
 	}
@@ -199,10 +199,6 @@ func (c *Config) ServerURL() string {
 		host = "localhost"
 	}
 
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		host = "[" + host + "]"
-	}
-
 	port := c.Server.Port
 	if port == 0 {
 		port = 2480
@@ -230,42 +226,6 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// envVarWithDefaultPattern matches ${VAR_NAME:-default} patterns.
-var envVarWithDefaultPattern = regexp.MustCompile(`\$\{([^}:]+)(?::-([^}]*))?\}`)
-
-// substituteEnvVars replaces ${VAR_NAME} and ${VAR_NAME:-default} patterns with environment variable values.
-// Lines that are comments (starting with #) are skipped.
-// Missing environment variables without defaults are replaced with empty strings (lenient mode).
-func substituteEnvVars(content string) (string, error) {
-	lines := strings.Split(content, "\n")
-
-	for i, line := range lines {
-		// Skip lines that are YAML comments.
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		lines[i] = envVarWithDefaultPattern.ReplaceAllStringFunc(line, func(match string) string {
-			parts := envVarWithDefaultPattern.FindStringSubmatch(match)
-			varName := parts[1]
-			defaultVal := ""
-			if len(parts) > 2 {
-				defaultVal = parts[2]
-			}
-
-			value := os.Getenv(varName)
-			if value == "" {
-				return defaultVal // Use default or empty string
-			}
-
-			return value
-		})
-	}
-
-	return strings.Join(lines, "\n"), nil
 }
 
 // applyDefaults sets default values for configuration fields.

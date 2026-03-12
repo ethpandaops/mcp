@@ -44,7 +44,7 @@ func (ext *Module) Init(rawConfig []byte) error {
 }
 
 func (ext *Module) Validate() error {
-	if err := ext.ensureExamplesLoaded(); err != nil {
+	if err := module.EnsureExampleCatalogLoaded(&ext.examples, loadExamples); err != nil {
 		return err
 	}
 
@@ -154,19 +154,4 @@ print(f"View in Dora: {link}")
 // BindRuntimeDependencies implements module.RuntimeDependencyBinder.
 func (ext *Module) BindRuntimeDependencies(deps module.RuntimeDependencies) {
 	ext.cartographoorClient = deps.Cartographoor
-}
-
-func (ext *Module) ensureExamplesLoaded() error {
-	if ext.examples != nil {
-		return nil
-	}
-
-	examples, err := loadExamples()
-	if err != nil {
-		return err
-	}
-
-	ext.examples = examples
-
-	return nil
 }

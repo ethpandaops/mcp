@@ -15,6 +15,8 @@ import (
 	"time"
 
 	clickhousemodule "github.com/ethpandaops/panda/modules/clickhouse"
+	authclientpkg "github.com/ethpandaops/panda/pkg/auth/client"
+	authstorepkg "github.com/ethpandaops/panda/pkg/auth/store"
 	"github.com/ethpandaops/panda/pkg/operations"
 	"github.com/ethpandaops/panda/pkg/serverapi"
 	"github.com/ethpandaops/panda/pkg/types"
@@ -47,6 +49,29 @@ func newCLIHarness(t *testing.T, handler http.Handler) *cliHarness {
 	originalExecuteJSON := executeJSON
 	originalClickHouseJSON := clickhouseJSON
 	originalDoraJSON := doraJSON
+	originalLokiJSON := lokiJSON
+	originalLokiLimit := lokiLimit
+	originalLokiStart := lokiStart
+	originalLokiEnd := lokiEnd
+	originalLokiDirection := lokiDirection
+	originalLokiTime := lokiTime
+	originalPrometheusJSON := prometheusJSON
+	originalPromQueryTime := promQueryTime
+	originalPromRangeStart := promRangeStart
+	originalPromRangeEnd := promRangeEnd
+	originalPromRangeStep := promRangeStep
+	originalSchemaJSON := schemaJSON
+	originalSearchExampleCategory := searchExampleCategory
+	originalSearchExampleLimit := searchExampleLimit
+	originalSearchExampleJSON := searchExampleJSON
+	originalSearchRunbookTag := searchRunbookTag
+	originalSearchRunbookLimit := searchRunbookLimit
+	originalSearchRunbookJSON := searchRunbookJSON
+	originalSessionJSON := sessionJSON
+	originalVersionJSON := versionJSON
+	originalAuthIssuerURL := authIssuerURL
+	originalAuthClientID := authClientID
+	originalAuthResource := authResource
 
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
@@ -75,6 +100,29 @@ func newCLIHarness(t *testing.T, handler http.Handler) *cliHarness {
 	executeJSON = false
 	clickhouseJSON = false
 	doraJSON = false
+	lokiJSON = false
+	lokiLimit = 100
+	lokiStart = ""
+	lokiEnd = ""
+	lokiDirection = "backward"
+	lokiTime = ""
+	prometheusJSON = false
+	promQueryTime = ""
+	promRangeStart = ""
+	promRangeEnd = ""
+	promRangeStep = ""
+	schemaJSON = false
+	searchExampleCategory = ""
+	searchExampleLimit = 3
+	searchExampleJSON = false
+	searchRunbookTag = ""
+	searchRunbookLimit = 3
+	searchRunbookJSON = false
+	sessionJSON = false
+	versionJSON = false
+	authIssuerURL = ""
+	authClientID = ""
+	authResource = ""
 
 	t.Cleanup(func() {
 		server.Close()
@@ -92,6 +140,29 @@ func newCLIHarness(t *testing.T, handler http.Handler) *cliHarness {
 		executeJSON = originalExecuteJSON
 		clickhouseJSON = originalClickHouseJSON
 		doraJSON = originalDoraJSON
+		lokiJSON = originalLokiJSON
+		lokiLimit = originalLokiLimit
+		lokiStart = originalLokiStart
+		lokiEnd = originalLokiEnd
+		lokiDirection = originalLokiDirection
+		lokiTime = originalLokiTime
+		prometheusJSON = originalPrometheusJSON
+		promQueryTime = originalPromQueryTime
+		promRangeStart = originalPromRangeStart
+		promRangeEnd = originalPromRangeEnd
+		promRangeStep = originalPromRangeStep
+		schemaJSON = originalSchemaJSON
+		searchExampleCategory = originalSearchExampleCategory
+		searchExampleLimit = originalSearchExampleLimit
+		searchExampleJSON = originalSearchExampleJSON
+		searchRunbookTag = originalSearchRunbookTag
+		searchRunbookLimit = originalSearchRunbookLimit
+		searchRunbookJSON = originalSearchRunbookJSON
+		sessionJSON = originalSessionJSON
+		versionJSON = originalVersionJSON
+		authIssuerURL = originalAuthIssuerURL
+		authClientID = originalAuthClientID
+		authResource = originalAuthResource
 	})
 
 	return &cliHarness{server: server}
@@ -837,6 +908,633 @@ func TestServerHelperWrappers(t *testing.T) {
 
 	assert.EqualError(t, decodeAPIError(http.StatusBadRequest, []byte(`{"error":"bad request"}`)), "HTTP 400: bad request")
 	assert.EqualError(t, decodeAPIError(http.StatusInternalServerError, []byte("server failed")), "HTTP 500: server failed")
+}
+
+func TestServerHelperErrorPathsAndAdditionalWrappers(t *testing.T) {
+	t.Run("load and transport helpers surface errors", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/inspect-teapot", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusTeapot, map[string]string{"error": "short and stout"})
+		})
+		mux.HandleFunc("/inspect-post-bad-json", func(w http.ResponseWriter, _ *http.Request) {
+			_, err := w.Write([]byte("{"))
+			require.NoError(t, err)
+		})
+		mux.HandleFunc("/inspect-delete-error", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusConflict, map[string]string{"error": "session busy"})
+		})
+		mux.HandleFunc("/api/v1/operations/error", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusInternalServerError, map[string]string{"error": "operation failed"})
+		})
+		mux.HandleFunc("/api/v1/operations/bad-data", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusOK, operations.NewObjectResponse(map[string]any{
+				"datasources": "wrong-shape",
+			}, nil))
+		})
+
+		newCLIHarness(t, mux)
+
+		originalCfgFile := cfgFile
+		cfgFile = filepath.Join(t.TempDir(), "missing.yaml")
+
+		_, _, _, err := serverDo(context.Background(), http.MethodGet, "/inspect-teapot", nil, nil, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "loading config")
+
+		cfgFile = originalCfgFile
+
+		var target map[string]string
+		err = serverGetJSON(context.Background(), "/inspect-teapot", nil, &target)
+		require.Error(t, err)
+		assert.EqualError(t, err, "HTTP 418: short and stout")
+
+		err = serverPostJSON(context.Background(), "/inspect-post-bad-json", map[string]string{"hello": "world"}, &target)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "decoding response")
+
+		err = serverPostJSON(context.Background(), "/inspect-post-bad-json", map[string]any{"bad": make(chan int)}, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "marshaling request")
+
+		err = serverDelete(context.Background(), "/inspect-delete-error")
+		require.Error(t, err)
+		assert.EqualError(t, err, "HTTP 409: session busy")
+
+		_, err = serverOperationJSON[operations.NoArgs, operations.DatasourcesPayload](
+			context.Background(),
+			"error",
+			operations.NoArgs{},
+		)
+		require.Error(t, err)
+		assert.EqualError(t, err, "HTTP 500: operation failed")
+
+		_, err = serverOperationJSON[operations.NoArgs, operations.DatasourcesPayload](
+			context.Background(),
+			"bad-data",
+			operations.NoArgs{},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "decoding operation data")
+
+		_, err = serverOperationRaw(context.Background(), "error", operations.NoArgs{})
+		require.Error(t, err)
+		assert.EqualError(t, err, "HTTP 500: operation failed")
+	})
+
+	t.Run("optional query params and resource wrappers behave correctly", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v1/datasources", func(w http.ResponseWriter, r *http.Request) {
+			assert.Empty(t, r.URL.Query().Get("type"))
+			writeJSONResponse(t, w, http.StatusOK, serverapi.DatasourcesResponse{
+				Datasources: []types.DatasourceInfo{{Type: "clickhouse", Name: "xatu"}},
+			})
+		})
+		mux.HandleFunc("/api/v1/search/examples", func(w http.ResponseWriter, r *http.Request) {
+			assert.Empty(t, r.URL.Query().Get("category"))
+			assert.Empty(t, r.URL.Query().Get("limit"))
+
+			writeJSONResponse(t, w, http.StatusOK, serverapi.SearchExamplesResponse{
+				Query:        r.URL.Query().Get("query"),
+				TotalMatches: 1,
+				Results: []*serverapi.SearchExampleResult{{
+					ExampleName: "validator count",
+				}},
+			})
+		})
+		mux.HandleFunc("/api/v1/search/runbooks", func(w http.ResponseWriter, r *http.Request) {
+			assert.Empty(t, r.URL.Query().Get("tag"))
+			assert.Empty(t, r.URL.Query().Get("limit"))
+
+			writeJSONResponse(t, w, http.StatusOK, serverapi.SearchRunbooksResponse{
+				Query:        r.URL.Query().Get("query"),
+				TotalMatches: 1,
+				Results: []*serverapi.SearchRunbookResult{{
+					Name: "network not finalizing",
+				}},
+			})
+		})
+		mux.HandleFunc("/api/v1/execute", func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodPost, r.Method)
+
+			var req serverapi.ExecuteRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			assert.Equal(t, "print('ok')", req.Code)
+
+			writeJSONResponse(t, w, http.StatusOK, serverapi.ExecuteResponse{
+				Stdout:      "ok\n",
+				ExecutionID: "exec-1",
+			})
+		})
+		mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodGet, r.Method)
+			writeJSONResponse(t, w, http.StatusOK, serverapi.ListSessionsResponse{
+				Sessions: []serverapi.SessionResponse{{SessionID: "sess-1"}},
+				Total:    1,
+			})
+		})
+		mux.HandleFunc("/api/v1/resources/read", func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Query().Get("uri") {
+			case "clickhouse://tables":
+				writeJSONResponse(t, w, http.StatusOK, clickhousemodule.TablesListResponse{
+					Clusters: map[string]*clickhousemodule.ClusterTablesSummary{
+						"xatu": {
+							Tables: []*clickhousemodule.TableSummary{{Name: "blocks"}},
+						},
+					},
+				})
+			case "clickhouse://tables/broken":
+				_, err := w.Write([]byte("{"))
+				require.NoError(t, err)
+			default:
+				writeJSONResponse(t, w, http.StatusNotFound, map[string]string{"error": "missing resource"})
+			}
+		})
+
+		newCLIHarness(t, mux)
+
+		datasources, err := listDatasources(context.Background(), "")
+		require.NoError(t, err)
+		require.Len(t, datasources.Datasources, 1)
+		assert.Equal(t, "xatu", datasources.Datasources[0].Name)
+
+		examples, err := searchExamples(context.Background(), "validator", "", 0)
+		require.NoError(t, err)
+		assert.Equal(t, "validator", examples.Query)
+
+		runbooks, err := searchRunbooks(context.Background(), "finality", "", 0)
+		require.NoError(t, err)
+		assert.Equal(t, "finality", runbooks.Query)
+
+		execution, err := executeCodeRemotely(context.Background(), serverapi.ExecuteRequest{Code: "print('ok')"})
+		require.NoError(t, err)
+		assert.Equal(t, "exec-1", execution.ExecutionID)
+
+		sessions, err := listSessions(context.Background())
+		require.NoError(t, err)
+		require.Len(t, sessions.Sessions, 1)
+		assert.Equal(t, "sess-1", sessions.Sessions[0].SessionID)
+
+		tables, err := readClickHouseTables(context.Background())
+		require.NoError(t, err)
+		require.Contains(t, tables.Clusters, "xatu")
+
+		_, err = readClickHouseTable(context.Background(), "broken")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "decoding table detail")
+
+		_, err = readResource(context.Background(), "missing://resource")
+		require.Error(t, err)
+		assert.EqualError(t, err, "HTTP 404: missing resource")
+	})
+}
+
+func TestAuthCommandsAndTargetResolution(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	t.Run("resolve target from overrides and metadata fallback", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v1/proxy/auth", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusOK, serverapi.ProxyAuthMetadataResponse{
+				Enabled:   true,
+				IssuerURL: "https://metadata-issuer.example",
+				ClientID:  "metadata-client",
+				Resource:  "https://metadata-resource.example",
+			})
+		})
+
+		harness := newCLIHarness(t, mux)
+
+		authIssuerURL = "https://issuer.example"
+		target, err := resolveAuthTarget(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "https://issuer.example", target.issuerURL)
+		assert.Equal(t, defaultProxyAuthClientID, target.clientID)
+		assert.Equal(t, "https://issuer.example", target.resource)
+		assert.True(t, target.enabled)
+
+		authIssuerURL = ""
+		authClientID = "override-client"
+		_, err = resolveAuthTarget(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "issuer is required when overriding auth settings")
+
+		authClientID = ""
+		require.NoError(t, os.WriteFile(cfgFile, []byte(`
+server:
+  url: `+harness.server.URL+`
+proxy:
+  url: https://proxy.example
+sandbox:
+  image: sandbox:test
+`), 0o600))
+
+		target, err = resolveAuthTarget(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "https://metadata-issuer.example", target.issuerURL)
+		assert.Equal(t, "metadata-client", target.clientID)
+		assert.Equal(t, "https://metadata-resource.example", target.resource)
+	})
+
+	t.Run("config-backed status logout and disabled login", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v1/proxy/auth", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONResponse(t, w, http.StatusOK, serverapi.ProxyAuthMetadataResponse{Enabled: false})
+		})
+
+		harness := newCLIHarness(t, mux)
+
+		require.NoError(t, os.WriteFile(cfgFile, []byte(`
+server:
+  url: `+harness.server.URL+`
+proxy:
+  url: https://proxy.example
+  auth:
+    issuer_url: https://issuer.example
+    client_id: panda-cli
+sandbox:
+  image: sandbox:test
+`), 0o600))
+
+		target := resolveAuthTargetFromConfig()
+		require.NotNil(t, target)
+		assert.Equal(t, "https://issuer.example", target.issuerURL)
+		assert.Equal(t, "panda-cli", target.clientID)
+		assert.Equal(t, "https://proxy.example", target.resource)
+		assert.True(t, target.enabled)
+
+		store := authstorepkg.New(logrus.New(), authstorepkg.Config{
+			IssuerURL: target.issuerURL,
+			ClientID:  target.clientID,
+			Resource:  target.resource,
+		})
+		require.NoError(t, store.Save(&authclientpkg.Tokens{
+			AccessToken: "token-1",
+			TokenType:   "Bearer",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		}))
+
+		stdout, _ := captureOutput(t, func() {
+			require.NoError(t, runAuthStatus(authStatusCmd, nil))
+		})
+		assert.Contains(t, stdout, "Issuer: https://issuer.example")
+		assert.Contains(t, stdout, "Client ID: panda-cli")
+		assert.Contains(t, stdout, "Status: Authenticated")
+
+		require.NoError(t, store.Save(&authclientpkg.Tokens{
+			AccessToken: "token-2",
+			TokenType:   "Bearer",
+			ExpiresAt:   time.Now().Add(-time.Hour),
+		}))
+
+		stdout, _ = captureOutput(t, func() {
+			require.NoError(t, runAuthStatus(authStatusCmd, nil))
+		})
+		assert.Contains(t, stdout, "Status: Expired")
+
+		stdout, _ = captureOutput(t, func() {
+			require.NoError(t, runAuthLogout(authLogoutCmd, nil))
+		})
+		assert.Contains(t, stdout, "Removed credentials at:")
+
+		stdout, _ = captureOutput(t, func() {
+			require.NoError(t, runAuthStatus(authStatusCmd, nil))
+		})
+		assert.Contains(t, stdout, "Status: Not authenticated")
+
+		require.NoError(t, os.WriteFile(cfgFile, []byte(`
+server:
+  url: `+harness.server.URL+`
+proxy:
+  url: https://proxy.example
+sandbox:
+  image: sandbox:test
+`), 0o600))
+
+		stdout, _ = captureOutput(t, func() {
+			require.NoError(t, runAuthLogin(authLoginCmd, nil))
+		})
+		assert.Contains(t, stdout, "Proxy authentication is not enabled for the configured server.")
+	})
+}
+
+func TestSchemaSearchSessionAndVersionCommands(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/resources/read", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("uri") {
+		case "clickhouse://tables":
+			writeJSONResponse(t, w, http.StatusOK, clickhousemodule.TablesListResponse{
+				Clusters: map[string]*clickhousemodule.ClusterTablesSummary{
+					"xatu": {
+						TableCount:  1,
+						LastUpdated: "2025-03-12T00:00:00Z",
+						Tables: []*clickhousemodule.TableSummary{
+							{Name: "blocks", ColumnCount: 12, HasNetworkCol: true},
+						},
+					},
+				},
+			})
+		case "clickhouse://tables/blocks":
+			writeJSONResponse(t, w, http.StatusOK, clickhousemodule.TableDetailResponse{
+				Cluster: "xatu",
+				Table: &clickhousemodule.TableSchema{
+					Name:     "blocks",
+					Comment:  "Beacon blocks",
+					Networks: []string{"hoodi", "mainnet"},
+					Columns: []clickhousemodule.TableColumn{
+						{Name: "slot", Type: "UInt64"},
+					},
+				},
+			})
+		default:
+			writeJSONResponse(t, w, http.StatusNotFound, map[string]string{"error": "missing resource"})
+		}
+	})
+	mux.HandleFunc("/api/v1/search/examples", func(w http.ResponseWriter, r *http.Request) {
+		response := serverapi.SearchExamplesResponse{
+			Query: r.URL.Query().Get("query"),
+		}
+
+		if response.Query != "none" {
+			response.Results = []*serverapi.SearchExampleResult{{
+				CategoryName:     "validators",
+				ExampleName:      "validator count",
+				Description:      "Find validators",
+				SimilarityScore:  0.98,
+				TargetCluster:    "xatu",
+				Query:            "SELECT count(*) FROM validators",
+			}}
+			response.TotalMatches = 1
+		}
+
+		writeJSONResponse(t, w, http.StatusOK, response)
+	})
+	mux.HandleFunc("/api/v1/search/runbooks", func(w http.ResponseWriter, r *http.Request) {
+		response := serverapi.SearchRunbooksResponse{
+			Query: r.URL.Query().Get("query"),
+		}
+
+		if response.Query != "none" {
+			response.Results = []*serverapi.SearchRunbookResult{{
+				Name:            "Network not finalizing",
+				Description:     "Check finality",
+				SimilarityScore: 0.87,
+				Tags:            []string{"finality", "consensus"},
+				Prerequisites:   []string{"access"},
+				Content:         "1. Inspect head slot\n2. Check peers",
+			}}
+			response.TotalMatches = 1
+		}
+
+		writeJSONResponse(t, w, http.StatusOK, response)
+	})
+	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSONResponse(t, w, http.StatusOK, serverapi.ListSessionsResponse{
+				Sessions: []serverapi.SessionResponse{{
+					SessionID:    "sess-1",
+					CreatedAt:    time.Unix(10, 0).UTC(),
+					TTLRemaining: "10m",
+				}},
+				Total: 1,
+			})
+		case http.MethodPost:
+			writeJSONResponse(t, w, http.StatusOK, serverapi.CreateSessionResponse{
+				SessionID:    "sess-2",
+				TTLRemaining: "15m",
+			})
+		default:
+			t.Fatalf("unexpected sessions method: %s", r.Method)
+		}
+	})
+	mux.HandleFunc("/api/v1/sessions/sess-1", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	newCLIHarness(t, mux)
+
+	stdout, _ := captureOutput(t, func() {
+		require.NoError(t, runSchema(schemaCmd, nil))
+	})
+	assert.Contains(t, stdout, "Cluster: xatu")
+	assert.Contains(t, stdout, "blocks")
+	assert.Contains(t, stdout, "network-filtered")
+
+	schemaJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSchema(schemaCmd, []string{"blocks"}))
+	})
+	assert.Contains(t, stdout, `"cluster": "xatu"`)
+	assert.Contains(t, stdout, `"name": "blocks"`)
+
+	schemaJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSchema(schemaCmd, []string{"blocks"}))
+	})
+	assert.Contains(t, stdout, "Table: blocks  (cluster: xatu)")
+	assert.Contains(t, stdout, "Comment: Beacon blocks")
+	assert.Contains(t, stdout, "Networks: hoodi, mainnet")
+
+	searchExampleCategory = "validators"
+	searchExampleLimit = 5
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchExamples(searchExamplesCmd, []string{"validator"}))
+	})
+	assert.Contains(t, stdout, "[validators] validator count")
+	assert.Contains(t, stdout, "Cluster: xatu")
+
+	searchExampleJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchExamples(searchExamplesCmd, []string{"validator"}))
+	})
+	assert.Contains(t, stdout, `"validator count"`)
+
+	searchExampleJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchExamples(searchExamplesCmd, []string{"none"}))
+	})
+	assert.Contains(t, stdout, "No matching examples found.")
+
+	searchRunbookTag = "finality"
+	searchRunbookLimit = 3
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchRunbooks(searchRunbooksCmd, []string{"finality"}))
+	})
+	assert.Contains(t, stdout, "Network not finalizing")
+	assert.Contains(t, stdout, "Tags: finality, consensus")
+	assert.Contains(t, stdout, "Prerequisites: access")
+
+	searchRunbookJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchRunbooks(searchRunbooksCmd, []string{"finality"}))
+	})
+	assert.Contains(t, stdout, `"Network not finalizing"`)
+
+	searchRunbookJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSearchRunbooks(searchRunbooksCmd, []string{"none"}))
+	})
+	assert.Contains(t, stdout, "No matching runbooks found.")
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSessionList(sessionListCmd, nil))
+	})
+	assert.Contains(t, stdout, "sess-1")
+	assert.Contains(t, stdout, "ttl=10m")
+
+	sessionJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSessionCreate(sessionCreateCmd, nil))
+	})
+	assert.Contains(t, stdout, `"session_id": "sess-2"`)
+
+	sessionJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, runSessionDestroy(sessionDestroyCmd, []string{"sess-1"}))
+	})
+	assert.Contains(t, stdout, "Session sess-1 destroyed.")
+
+	stdout, _ = captureOutput(t, func() {
+		versionCmd.Run(versionCmd, nil)
+	})
+	assert.Contains(t, stdout, "panda version ")
+
+	versionJSON = true
+	stdout, _ = captureOutput(t, func() {
+		versionCmd.Run(versionCmd, nil)
+	})
+	assert.Contains(t, stdout, `"version": "`)
+
+	originalRootCmd := rootCmd
+	t.Cleanup(func() { rootCmd = originalRootCmd })
+
+	executed := false
+	rootCmd = &cobra.Command{
+		Use: "panda-test",
+		Run: func(_ *cobra.Command, _ []string) {
+			executed = true
+		},
+	}
+	rootCmd.SetArgs([]string{})
+	Execute()
+	assert.True(t, executed)
+}
+
+func TestLokiAndPrometheusCommandsAndPrinters(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/operations/", func(w http.ResponseWriter, r *http.Request) {
+		switch strings.TrimPrefix(r.URL.Path, "/api/v1/operations/") {
+		case "loki.list_datasources":
+			writeJSONResponse(t, w, http.StatusOK, operations.NewObjectResponse(operations.DatasourcesPayload{
+				Datasources: []operations.Datasource{{Name: "logs", Description: "Main logs", URL: "https://logs.example"}},
+			}, nil))
+		case "loki.query", "loki.query_instant":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"data":{"result":[{"stream":{"app":"beacon"},"values":[["1","line one"],["2","line two"]]}]}}`))
+			require.NoError(t, err)
+		case "loki.get_labels", "loki.get_label_values":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"data":["app","job"]}`))
+			require.NoError(t, err)
+		case "prometheus.list_datasources":
+			writeJSONResponse(t, w, http.StatusOK, operations.NewObjectResponse(operations.DatasourcesPayload{
+				Datasources: []operations.Datasource{{Name: "prom", Description: "Main metrics", URL: "https://prom.example"}},
+			}, nil))
+		case "prometheus.query":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"job":"panda"},"value":[1,"1"]}]}}`))
+			require.NoError(t, err)
+		case "prometheus.query_range":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"panda"},"values":[[1,"1"],[2,"2"]]}]}}`))
+			require.NoError(t, err)
+		case "prometheus.get_labels", "prometheus.get_label_values":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"data":["job","instance"]}`))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected operation %q", r.URL.Path)
+		}
+	})
+
+	newCLIHarness(t, mux)
+
+	stdout, _ := captureOutput(t, func() {
+		require.NoError(t, lokiListDatasourcesCmd.RunE(lokiListDatasourcesCmd, nil))
+	})
+	assert.Contains(t, stdout, "logs")
+	assert.Contains(t, stdout, "https://logs.example")
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, lokiQueryCmd.RunE(lokiQueryCmd, []string{"logs", "{job=\"panda\"}"}))
+	})
+	assert.Contains(t, stdout, "line one")
+	assert.Contains(t, stdout, "line two")
+
+	lokiJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, lokiLabelsCmd.RunE(lokiLabelsCmd, []string{"logs"}))
+	})
+	assert.Contains(t, stdout, `"job"`)
+
+	lokiJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, lokiLabelValuesCmd.RunE(lokiLabelValuesCmd, []string{"logs", "app"}))
+	})
+	assert.Contains(t, stdout, "app")
+	assert.Contains(t, stdout, "job")
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, printLokiResult([]byte("not-json")))
+	})
+	assert.Equal(t, "not-json\n", stdout)
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, promListDatasourcesCmd.RunE(promListDatasourcesCmd, nil))
+	})
+	assert.Contains(t, stdout, "prom")
+	assert.Contains(t, stdout, "https://prom.example")
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, promQueryCmd.RunE(promQueryCmd, []string{"prom", "up"}))
+	})
+	assert.Contains(t, stdout, `{job="panda"} => 1`)
+
+	promRangeStart = "1"
+	promRangeEnd = "2"
+	promRangeStep = "1m"
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, promQueryRangeCmd.RunE(promQueryRangeCmd, []string{"prom", "up"}))
+	})
+	assert.Contains(t, stdout, `{job="panda"}:`)
+	assert.Contains(t, stdout, `1 => 1`)
+	assert.Contains(t, stdout, `2 => 2`)
+
+	prometheusJSON = true
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, promLabelsCmd.RunE(promLabelsCmd, []string{"prom"}))
+	})
+	assert.Contains(t, stdout, `"job"`)
+
+	prometheusJSON = false
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, promLabelValuesCmd.RunE(promLabelValuesCmd, []string{"prom", "job"}))
+	})
+	assert.Contains(t, stdout, "job")
+	assert.Contains(t, stdout, "instance")
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, printPromResult([]byte("not-json")))
+	})
+	assert.Equal(t, "not-json\n", stdout)
+
+	stdout, _ = captureOutput(t, func() {
+		require.NoError(t, printAPIStringValues([]byte(`{"data":["alpha","beta"]}`)))
+	})
+	assert.Contains(t, stdout, "alpha")
+	assert.Contains(t, stdout, "beta")
 }
 
 func TestPrintJSON(t *testing.T) {

@@ -94,7 +94,7 @@ func (ext *Module) ApplyDefaults() {
 
 // Validate checks that the parsed config is valid.
 func (ext *Module) Validate() error {
-	if err := ext.ensureExamplesLoaded(); err != nil {
+	if err := module.EnsureExampleCatalogLoaded(&ext.examples, loadExamples); err != nil {
 		return err
 	}
 
@@ -104,37 +104,12 @@ func (ext *Module) Validate() error {
 		}
 	}
 
-	// Validate datasources have unique names.
-	names := make(map[string]struct{}, len(ext.datasources))
-	for i, ds := range ext.datasources {
-		if _, exists := names[ds.Name]; exists {
-			return fmt.Errorf("datasource[%d].name %q is duplicated", i, ds.Name)
-		}
-
-		names[ds.Name] = struct{}{}
-	}
-
-	return nil
+	return module.ValidateUniqueDatasources(ext.datasources)
 }
 
 // Examples returns query examples for the ClickHouse module.
 func (ext *Module) Examples() map[string]types.ExampleCategory {
 	return module.CloneExampleCatalog(ext.examples)
-}
-
-func (ext *Module) ensureExamplesLoaded() error {
-	if ext.examples != nil {
-		return nil
-	}
-
-	examples, err := loadExamples()
-	if err != nil {
-		return err
-	}
-
-	ext.examples = examples
-
-	return nil
 }
 
 // PythonAPIDocs returns the ClickHouse module documentation.

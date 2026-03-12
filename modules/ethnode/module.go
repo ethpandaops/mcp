@@ -43,7 +43,7 @@ func (ext *Module) Init(rawConfig []byte) error {
 }
 
 func (ext *Module) Validate() error {
-	return ext.ensureExamplesLoaded()
+	return module.EnsureExampleCatalogLoaded(&ext.examples, loadExamples)
 }
 
 // SandboxEnv returns environment variables for the sandbox.
@@ -135,19 +135,4 @@ print(f"Finalized epoch: {checkpoints['data']['finalized']['epoch']}")
 identity = ethnode.beacon_get("my-devnet", "lighthouse-geth-1", "/eth/v1/node/identity")
 ` + "```" + `
 `
-}
-
-func (ext *Module) ensureExamplesLoaded() error {
-	if ext.examples != nil {
-		return nil
-	}
-
-	examples, err := loadExamples()
-	if err != nil {
-		return err
-	}
-
-	ext.examples = examples
-
-	return nil
 }
