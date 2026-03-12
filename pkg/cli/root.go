@@ -92,9 +92,15 @@ func init() {
 		})
 }
 
-// backgroundUpdateCheck queries GitHub for the latest release and
-// sends the result through the updateResult channel.
+// backgroundUpdateCheck returns a cached version if fresh, otherwise
+// queries GitHub and updates the cache.
 func backgroundUpdateCheck() {
+	// Use cached result if it's less than 10 minutes old.
+	if cache, _ := github.LoadCache(); cache != nil && cache.IsFresh() {
+		updateResult <- &cache.LatestVersion
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -105,6 +111,11 @@ func backgroundUpdateCheck() {
 		updateResult <- nil
 		return
 	}
+
+	_ = github.SaveCache(&github.UpdateCache{
+		LatestVersion: release.TagName,
+		CheckedAt:     time.Now(),
+	})
 
 	updateResult <- &release.TagName
 }
