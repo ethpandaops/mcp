@@ -337,7 +337,12 @@ func (s *service) handleAPIReadResource(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	content, mimeType, err := s.resourceRegistry.Read(r.Context(), uri)
+	ctx := r.Context()
+	if cc := strings.TrimSpace(r.URL.Query().Get("client_context")); cc == types.ClientContextCLIParam {
+		ctx = types.WithClientContext(ctx, types.ClientContextCLI)
+	}
+
+	content, mimeType, err := s.resourceRegistry.Read(ctx, uri)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return

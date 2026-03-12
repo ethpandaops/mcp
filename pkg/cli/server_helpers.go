@@ -289,7 +289,14 @@ func listResources(ctx context.Context) (*serverapi.ListResourcesResponse, error
 }
 
 func readResource(ctx context.Context, uri string) (*serverapi.ResourceResponse, error) {
+	return readResourceWithClientContext(ctx, uri, "")
+}
+
+func readResourceWithClientContext(ctx context.Context, uri, clientContext string) (*serverapi.ResourceResponse, error) {
 	query := url.Values{"uri": []string{uri}}
+	if clientContext != "" {
+		query.Set("client_context", clientContext)
+	}
 
 	data, status, headers, err := serverDo(ctx, http.MethodGet, "/api/v1/resources/read", nil, query, nil)
 	if err != nil {
