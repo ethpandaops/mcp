@@ -1,8 +1,6 @@
 # 🐼 Panda
 
-Your gateway to the [ethpandaops](https://github.com/ethpandaops) ecosystem. A CLI, server, and sandboxed Python environment that gives you (and your AI agents) unified access to Ethereum network data — ClickHouse, Prometheus, Loki, and more.
-
-You shouldn't need credentials, boilerplate, or deep knowledge of a dozen different APIs to query Ethereum network data. Just ask a question or write some Python — panda handles the rest.
+Your gateway to the [ethpandaops](https://github.com/ethpandaops) ecosystem. It's a CLI, an MCP server, and a sandboxed Python runtime that talks to ClickHouse, Prometheus, Loki, and Ethereum nodes so you don't have to wrangle credentials or know each API individually.
 
 Read more: https://www.anthropic.com/engineering/code-execution-with-mcp
 
