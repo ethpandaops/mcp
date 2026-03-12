@@ -49,6 +49,46 @@ func newClickhouseSchemaQueryClient(
 	}
 }
 
+func (c *clickhouseSchemaClient) schemaQueries() clickhouseSchemaQueryClient {
+	queries := c.queryClient
+	if c.proxySvc != nil {
+		queries.proxySvc = c.proxySvc
+	}
+	if c.httpClient != nil {
+		queries.httpClient = c.httpClient
+	}
+	if c.cfg.QueryTimeout != 0 {
+		queries.queryTimeout = c.cfg.QueryTimeout
+	}
+
+	return queries
+}
+
+func (c *clickhouseSchemaClient) queryJSON(
+	ctx context.Context,
+	datasourceName, sql string,
+) (*clickhouseJSONResponse, error) {
+	return c.schemaQueries().queryJSON(ctx, datasourceName, sql)
+}
+
+func (c *clickhouseSchemaClient) fetchTableList(ctx context.Context, datasourceName string) ([]string, error) {
+	return c.schemaQueries().fetchTableList(ctx, datasourceName)
+}
+
+func (c *clickhouseSchemaClient) fetchTableSchema(
+	ctx context.Context,
+	datasourceName, tableName string,
+) (*TableSchema, error) {
+	return c.schemaQueries().fetchTableSchema(ctx, datasourceName, tableName)
+}
+
+func (c *clickhouseSchemaClient) fetchTableNetworks(
+	ctx context.Context,
+	datasourceName, tableName string,
+) ([]string, error) {
+	return c.schemaQueries().fetchTableNetworks(ctx, datasourceName, tableName)
+}
+
 func pickColumn(meta []clickhouseJSONMeta, preferred string) string {
 	if preferred != "" {
 		for _, m := range meta {

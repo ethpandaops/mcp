@@ -313,17 +313,17 @@ func TestSchemaHelpersAndQueries(t *testing.T) {
 		client := NewClickHouseSchemaClient(logrus.New(), ClickHouseSchemaConfig{
 			QueryTimeout: time.Second,
 		}, proxyAccess).(*clickhouseSchemaClient)
-		client.httpClient = server.Client()
+		client.queryClient.httpClient = server.Client()
 
-		tables, err := client.fetchTableList(context.Background(), "xatu")
+		tables, err := client.queryClient.fetchTableList(context.Background(), "xatu")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"blocks"}, tables)
 
-		schema, err := client.fetchTableSchema(context.Background(), "xatu", "blocks")
+		schema, err := client.queryClient.fetchTableSchema(context.Background(), "xatu", "blocks")
 		require.NoError(t, err)
 		assert.True(t, schema.HasNetworkCol)
 
-		networks, err := client.fetchTableNetworks(context.Background(), "xatu", "blocks")
+		networks, err := client.queryClient.fetchTableNetworks(context.Background(), "xatu", "blocks")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"hoodi", "mainnet"}, networks)
 		assert.Equal(t, 3, proxyAccess.authCalls)
@@ -333,18 +333,21 @@ func TestSchemaHelpersAndQueries(t *testing.T) {
 		client := &clickhouseSchemaClient{
 			log: logrus.New(),
 			cfg: ClickHouseSchemaConfig{QueryTimeout: time.Second},
-			proxySvc: &stubProxySchemaAccess{
-				baseURL:       "",
-				useConfigured: true,
-			},
-			httpClient: &http.Client{},
+			queryClient: newClickhouseSchemaQueryClient(
+				&stubProxySchemaAccess{
+					baseURL:       "",
+					useConfigured: true,
+				},
+				&http.Client{},
+				time.Second,
+			),
 		}
 
-		_, err := client.queryJSON(context.Background(), "", "SHOW TABLES")
+		_, err := client.queryClient.queryJSON(context.Background(), "", "SHOW TABLES")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "datasource name is required")
 
-		_, err = client.queryJSON(context.Background(), "xatu", "SHOW TABLES")
+		_, err = client.queryClient.queryJSON(context.Background(), "xatu", "SHOW TABLES")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "proxy URL is empty")
 	})

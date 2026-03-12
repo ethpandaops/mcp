@@ -186,8 +186,7 @@ func TestSchemaClientRefreshAndQueryErrorPaths(t *testing.T) {
 	client := &clickhouseSchemaClient{
 		log:         logrus.New(),
 		cfg:         ClickHouseSchemaConfig{QueryTimeout: time.Second},
-		proxySvc:    &stubProxySchemaAccess{baseURL: server.URL},
-		httpClient:  server.Client(),
+		queryClient: newClickhouseSchemaQueryClient(&stubProxySchemaAccess{baseURL: server.URL}, server.Client(), time.Second),
 		clusters:    make(map[string]*ClusterTables),
 		datasources: map[string]string{"xatu": "xatu", "broken": "broken"},
 	}
@@ -203,33 +202,33 @@ func TestSchemaClientRefreshAndQueryErrorPaths(t *testing.T) {
 	})
 
 	t.Run("queryJSON reports upstream status and clickhouse payload errors", func(t *testing.T) {
-		_, err := client.queryJSON(context.Background(), "xatu", "BAD STATUS")
+		_, err := client.queryClient.queryJSON(context.Background(), "xatu", "BAD STATUS")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "query failed (502)")
 
-		_, err = client.queryJSON(context.Background(), "xatu", "CLICKHOUSE ERROR")
+		_, err = client.queryClient.queryJSON(context.Background(), "xatu", "CLICKHOUSE ERROR")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "query error (321): broken query")
 	})
 
 	t.Run("fetch helpers surface missing columns and invalid identifiers", func(t *testing.T) {
-		_, err := client.fetchTableList(context.Background(), "missing-list")
+		_, err := client.queryClient.fetchTableList(context.Background(), "missing-list")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "SHOW TABLES response missing columns")
 
-		_, err = client.fetchTableSchema(context.Background(), "xatu", "invalid-name")
+		_, err = client.queryClient.fetchTableSchema(context.Background(), "xatu", "invalid-name")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "validating table name")
 
-		_, err = client.fetchTableSchema(context.Background(), "xatu", "empty_table")
+		_, err = client.queryClient.fetchTableSchema(context.Background(), "xatu", "empty_table")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty CREATE TABLE statement")
 
-		_, err = client.fetchTableSchema(context.Background(), "xatu", "missing_cols")
+		_, err = client.queryClient.fetchTableSchema(context.Background(), "xatu", "missing_cols")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "SHOW CREATE TABLE response missing columns")
 
-		_, err = client.fetchTableNetworks(context.Background(), "xatu", "missing_networks")
+		_, err = client.queryClient.fetchTableNetworks(context.Background(), "xatu", "missing_networks")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "network query response missing columns")
 	})
