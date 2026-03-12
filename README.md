@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="logo.png" alt="panda" width="128" />
-</p>
-
-# Panda
+# 🐼 Panda
 
 Your gateway to the [ethpandaops](https://github.com/ethpandaops) ecosystem. A CLI, server, and sandboxed Python environment that gives you (and your AI agents) unified access to Ethereum network data — ClickHouse, Prometheus, Loki, and more.
 
