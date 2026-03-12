@@ -19,7 +19,7 @@ also available to MCP-connected clients.
 
 Examples:
   panda resources
-  panda resources read ethpandaops://getting-started
+  panda resources read panda://getting-started
   panda resources read python://ethpandaops
   panda resources read clickhouse://tables
   panda resources -o json`,
@@ -32,7 +32,7 @@ var resourcesReadCmd = &cobra.Command{
 	Long: `Read a specific resource by its URI and print the content.
 
 Examples:
-  panda resources read ethpandaops://getting-started
+  panda resources read panda://getting-started
   panda resources read python://ethpandaops -o json
   panda resources read datasources://clickhouse`,
 	Args: cobra.ExactArgs(1),
