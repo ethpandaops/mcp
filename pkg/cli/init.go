@@ -220,10 +220,10 @@ services:
       - %s/config.yaml:/app/config.yaml:ro
       - %s/credentials:/home/panda/.config/panda/credentials
       - panda-storage:/data/storage
-    command: ["serve", "--config", "/app/config.yaml"]
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    command: ["panda-server", "serve", "--config", "/app/config.yaml"]
     networks:
       - panda-internal
 

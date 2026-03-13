@@ -1,5 +1,8 @@
 version: 2
 
+snapshot:
+  version_template: "{{ .Tag }}-SNAPSHOT-{{ .ShortCommit }}"
+
 builds:
   - id: panda-server
     main: ./cmd/server
@@ -72,6 +75,8 @@ dockers_v2:
     ids:
       - panda-server
     dockerfile: goreleaser.server.Dockerfile
+    extra_files:
+      - docker-entrypoint.sh
     images:
       - "ethpandaops/panda"
     tags:
