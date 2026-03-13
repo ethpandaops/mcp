@@ -38,3 +38,35 @@ func TestRegisterRoutesMatchesClickHouseSubpaths(t *testing.T) {
 		t.Fatalf("expected clickhouse handler status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 }
+
+func TestMetricsDatasourceLabelUsesConfiguredNamesOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := ServerConfig{
+		Auth: AuthConfig{Mode: AuthModeNone},
+		ClickHouse: []ClickHouseClusterConfig{
+			{Name: "xatu", Host: "example.com", Port: 8123, Username: "user", Password: "pass"},
+		},
+		Prometheus: []PrometheusInstanceConfig{
+			{Name: "prod", URL: "https://prom.example.com"},
+		},
+	}
+	cfg.ApplyDefaults()
+
+	srv, err := newServer(logrus.New(), cfg, "http://proxy.test", "18081")
+	if err != nil {
+		t.Fatalf("newServer failed: %v", err)
+	}
+
+	if got := srv.metricsDatasourceLabel("clickhouse", "xatu"); got != "xatu" {
+		t.Fatalf("expected configured clickhouse datasource, got %q", got)
+	}
+
+	if got := srv.metricsDatasourceLabel("clickhouse", "attacker-"+t.Name()); got != "unknown" {
+		t.Fatalf("expected unknown label for unconfigured datasource, got %q", got)
+	}
+
+	if got := srv.metricsDatasourceLabel("prometheus", ""); got != "default" {
+		t.Fatalf("expected default label for empty datasource, got %q", got)
+	}
+}

@@ -45,8 +45,8 @@ type Config struct {
 	// ClientID is the OAuth client ID.
 	ClientID string
 
-	// Resource is the OAuth protected resource to request tokens for.
-	// Defaults to IssuerURL when omitted.
+	// Resource is the optional OAuth protected resource to request tokens for.
+	// Leave empty for standard OIDC providers that do not use RFC 8707 resource parameters.
 	Resource string
 
 	// RedirectPort is the local port for the callback server.
@@ -92,10 +92,6 @@ type deviceAuthResponse struct {
 func New(log logrus.FieldLogger, cfg Config) Client {
 	if cfg.RedirectPort == 0 {
 		cfg.RedirectPort = 8085
-	}
-
-	if cfg.Resource == "" {
-		cfg.Resource = strings.TrimSuffix(cfg.IssuerURL, "/")
 	}
 
 	if len(cfg.Scopes) == 0 {
@@ -220,7 +216,9 @@ func (c *client) Refresh(ctx context.Context, refreshToken string) (*Tokens, err
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"client_id":     {c.cfg.ClientID},
-		"resource":      {c.cfg.Resource},
+	}
+	if c.cfg.Resource != "" {
+		data.Set("resource", c.cfg.Resource)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.oidc.TokenEndpoint, strings.NewReader(data.Encode()))
@@ -252,7 +250,7 @@ func (c *client) Refresh(ctx context.Context, refreshToken string) (*Tokens, err
 	}
 
 	return &Tokens{
-		AccessToken:  tokenResp.AccessToken,
+		AccessToken:  bearerTokenFromResponse(tokenResp),
 		RefreshToken: resolvedRefreshToken,
 		TokenType:    tokenResp.TokenType,
 		ExpiresIn:    tokenResp.ExpiresIn,
@@ -326,10 +324,12 @@ func (c *client) buildAuthURL(state, challenge string) string {
 		"client_id":             {c.cfg.ClientID},
 		"redirect_uri":          {redirectURI},
 		"scope":                 {strings.Join(c.cfg.Scopes, " ")},
-		"resource":              {c.cfg.Resource},
 		"state":                 {state},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
+	}
+	if c.cfg.Resource != "" {
+		params.Set("resource", c.cfg.Resource)
 	}
 
 	return c.oidc.AuthorizationEndpoint + "?" + params.Encode()
@@ -405,7 +405,9 @@ func (c *client) exchangeCode(ctx context.Context, code, verifier string) (*Toke
 		"redirect_uri":  {redirectURI},
 		"client_id":     {c.cfg.ClientID},
 		"code_verifier": {verifier},
-		"resource":      {c.cfg.Resource},
+	}
+	if c.cfg.Resource != "" {
+		data.Set("resource", c.cfg.Resource)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.oidc.TokenEndpoint, strings.NewReader(data.Encode()))
@@ -432,7 +434,7 @@ func (c *client) exchangeCode(ctx context.Context, code, verifier string) (*Toke
 	}
 
 	return &Tokens{
-		AccessToken:  tokenResp.AccessToken,
+		AccessToken:  bearerTokenFromResponse(tokenResp),
 		RefreshToken: tokenResp.RefreshToken,
 		TokenType:    tokenResp.TokenType,
 		ExpiresIn:    tokenResp.ExpiresIn,
@@ -444,7 +446,9 @@ func (c *client) exchangeCode(ctx context.Context, code, verifier string) (*Toke
 func (c *client) requestDeviceCode(ctx context.Context) (*deviceAuthResponse, error) {
 	data := url.Values{
 		"client_id": {c.cfg.ClientID},
-		"resource":  {c.cfg.Resource},
+	}
+	if c.cfg.Resource != "" {
+		data.Set("resource", c.cfg.Resource)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -507,7 +511,9 @@ func (c *client) exchangeDeviceCode(ctx context.Context, deviceCode string) (tok
 		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 		"device_code": {deviceCode},
 		"client_id":   {c.cfg.ClientID},
-		"resource":    {c.cfg.Resource},
+	}
+	if c.cfg.Resource != "" {
+		data.Set("resource", c.cfg.Resource)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -536,7 +542,7 @@ func (c *client) exchangeDeviceCode(ctx context.Context, deviceCode string) (tok
 		}
 
 		return &Tokens{
-			AccessToken:  tokenResp.AccessToken,
+			AccessToken:  bearerTokenFromResponse(tokenResp),
 			RefreshToken: tokenResp.RefreshToken,
 			TokenType:    tokenResp.TokenType,
 			ExpiresIn:    tokenResp.ExpiresIn,
@@ -570,9 +576,18 @@ func (c *client) exchangeDeviceCode(ctx context.Context, deviceCode string) (tok
 // tokenResponse is the OAuth token endpoint response.
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
+	IDToken      string `json:"id_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+}
+
+func bearerTokenFromResponse(resp tokenResponse) string {
+	if resp.IDToken != "" {
+		return resp.IDToken
+	}
+
+	return resp.AccessToken
 }
 
 // generatePKCE generates a PKCE verifier and challenge.

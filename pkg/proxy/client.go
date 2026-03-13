@@ -52,12 +52,6 @@ type Client interface {
 	// LokiDatasourceInfo returns detailed Loki datasource info.
 	LokiDatasourceInfo() []types.DatasourceInfo
 
-	// S3Bucket returns the discovered S3 bucket name.
-	S3Bucket() string
-
-	// S3PublicURLPrefix returns the discovered S3 public URL prefix.
-	S3PublicURLPrefix() string
-
 	// EthNodeAvailable returns true if the proxy has ethnode credentials configured.
 	EthNodeAvailable() bool
 
@@ -81,7 +75,7 @@ type ClientConfig struct {
 	ClientID string
 
 	// Resource is the OAuth protected resource to request tokens for.
-	// Defaults to URL when omitted.
+	// Leave empty for standard OIDC providers that do not use RFC 8707 resource parameters.
 	Resource string
 
 	// DiscoveryInterval is how often to refresh datasource info (default: 5 minutes).
@@ -147,9 +141,6 @@ func NewClient(log logrus.FieldLogger, cfg ClientConfig) Client {
 	}
 
 	resource := strings.TrimRight(cfg.Resource, "/")
-	if resource == "" {
-		resource = strings.TrimRight(cfg.URL, "/")
-	}
 
 	if issuerURL != "" && cfg.ClientID != "" {
 		c.authClient = client.New(log, client.Config{
@@ -360,22 +351,6 @@ func (c *proxyClient) LokiDatasourceInfo() []types.DatasourceInfo {
 	return namesToInfo("loki", c.datasources.Loki)
 }
 
-// S3Bucket returns the discovered S3 bucket name.
-func (c *proxyClient) S3Bucket() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.datasources.S3Bucket
-}
-
-// S3PublicURLPrefix returns the discovered S3 public URL prefix.
-func (c *proxyClient) S3PublicURLPrefix() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.datasources.S3PublicURLPrefix
-}
-
 // EthNodeAvailable returns true if the proxy has ethnode credentials configured.
 func (c *proxyClient) EthNodeAvailable() bool {
 	c.mu.RLock()
@@ -450,7 +425,6 @@ func (c *proxyClient) Discover(ctx context.Context) error {
 		"clickhouse": clickhouseCount,
 		"prometheus": prometheusCount,
 		"loki":       lokiCount,
-		"s3_bucket":  datasources.S3Bucket,
 	}).Debug("Discovered datasources from proxy")
 
 	return nil
