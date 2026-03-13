@@ -17,6 +17,7 @@ import (
 const defaultProxyAuthClientID = "panda"
 
 type authTarget struct {
+	mode      string
 	issuerURL string
 	clientID  string
 	resource  string
@@ -193,6 +194,7 @@ func resolveAuthTarget(ctx context.Context) (*authTarget, error) {
 	// 1. Explicit CLI flags take priority.
 	if strings.TrimSpace(authIssuerURL) != "" || strings.TrimSpace(authClientID) != "" || strings.TrimSpace(authResource) != "" {
 		target := &authTarget{
+			mode:      "oidc",
 			issuerURL: strings.TrimSpace(authIssuerURL),
 			clientID:  strings.TrimSpace(authClientID),
 			resource:  strings.TrimSpace(authResource),
@@ -203,7 +205,7 @@ func resolveAuthTarget(ctx context.Context) (*authTarget, error) {
 			target.clientID = defaultProxyAuthClientID
 		}
 
-		if target.resource == "" {
+		if target.resource == "" && target.mode != "oidc" {
 			target.resource = target.issuerURL
 		}
 
@@ -230,17 +232,22 @@ func resolveAuthTarget(ctx context.Context) (*authTarget, error) {
 	}
 
 	target := &authTarget{
+		mode:      strings.TrimSpace(metadata.Mode),
 		issuerURL: strings.TrimSpace(metadata.IssuerURL),
 		clientID:  strings.TrimSpace(metadata.ClientID),
 		resource:  strings.TrimSpace(metadata.Resource),
 		enabled:   metadata.Enabled,
 	}
 
+	if target.mode == "" {
+		target.mode = "oauth"
+	}
+
 	if target.clientID == "" {
 		target.clientID = defaultProxyAuthClientID
 	}
 
-	if target.resource == "" {
+	if target.resource == "" && target.mode != "oidc" {
 		target.resource = target.issuerURL
 	}
 
@@ -274,15 +281,21 @@ func resolveAuthTargetFromConfig() *authTarget {
 		clientID = defaultProxyAuthClientID
 	}
 
-	resource := strings.TrimRight(strings.TrimSpace(cfg.Proxy.URL), "/")
-	if issuerURL != "" {
-		resource = issuerURL
+	mode := strings.TrimSpace(cfg.Proxy.Auth.Mode)
+	if mode == "" {
+		mode = "oauth"
 	}
-	if resource == "" {
+
+	resource := strings.TrimSpace(cfg.Proxy.Auth.Resource)
+	if resource == "" && mode != "oidc" {
 		resource = issuerURL
+		if resource == "" {
+			resource = strings.TrimRight(strings.TrimSpace(cfg.Proxy.URL), "/")
+		}
 	}
 
 	return &authTarget{
+		mode:      mode,
 		issuerURL: issuerURL,
 		clientID:  clientID,
 		resource:  resource,

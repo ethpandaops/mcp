@@ -75,7 +75,7 @@ type ClientConfig struct {
 	ClientID string
 
 	// Resource is the OAuth protected resource to request tokens for.
-	// Defaults to URL when omitted.
+	// Leave empty for standard OIDC providers that do not use RFC 8707 resource parameters.
 	Resource string
 
 	// DiscoveryInterval is how often to refresh datasource info (default: 5 minutes).
@@ -141,9 +141,6 @@ func NewClient(log logrus.FieldLogger, cfg ClientConfig) Client {
 	}
 
 	resource := strings.TrimRight(cfg.Resource, "/")
-	if resource == "" {
-		resource = strings.TrimRight(cfg.URL, "/")
-	}
 
 	if issuerURL != "" && cfg.ClientID != "" {
 		c.authClient = client.New(log, client.Config{

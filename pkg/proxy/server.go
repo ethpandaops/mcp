@@ -89,13 +89,14 @@ func newServer(log logrus.FieldLogger, cfg ServerConfig, hostURL, port string) (
 		s.authenticator = NewNoneAuthenticator(log)
 	case AuthModeOAuth:
 		authCfg := simpleauth.Config{
-			Enabled:        true,
-			IssuerURL:      cfg.Auth.IssuerURL,
-			GitHub:         cfg.Auth.GitHub,
-			AllowedOrgs:    append([]string(nil), cfg.Auth.AllowedOrgs...),
-			Tokens:         cfg.Auth.Tokens,
-			AccessTokenTTL: cfg.Auth.AccessTokenTTL,
-			SuccessPage:    cfg.Auth.SuccessPage,
+			Enabled:         true,
+			IssuerURL:       cfg.Auth.IssuerURL,
+			GitHub:          cfg.Auth.GitHub,
+			AllowedOrgs:     append([]string(nil), cfg.Auth.AllowedOrgs...),
+			Tokens:          cfg.Auth.Tokens,
+			AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
+			RefreshTokenTTL: cfg.Auth.RefreshTokenTTL,
+			SuccessPage:     cfg.Auth.SuccessPage,
 		}
 
 		authSvc, err := simpleauth.NewSimpleService(log, authCfg)
@@ -105,6 +106,16 @@ func newServer(log logrus.FieldLogger, cfg ServerConfig, hostURL, port string) (
 
 		s.authService = authSvc
 		s.authenticator = NewSimpleServiceAuthenticator(authSvc)
+	case AuthModeOIDC:
+		oidcAuth, err := NewOIDCAuthenticator(log, OIDCAuthenticatorConfig{
+			IssuerURL: cfg.Auth.IssuerURL,
+			ClientID:  cfg.Auth.ClientID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("creating OIDC authenticator: %w", err)
+		}
+
+		s.authenticator = oidcAuth
 	default:
 		return nil, fmt.Errorf("unsupported auth mode: %s", cfg.Auth.Mode)
 	}

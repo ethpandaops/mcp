@@ -155,9 +155,9 @@ func (rl *RateLimiter) cleanup() {
 
 // AuditEntry represents a single audit log entry.
 type AuditEntry struct {
-	GitHubLogin    string   `json:"github_login"`
-	GitHubID       int64    `json:"github_id"`
-	Orgs           []string `json:"orgs,omitempty"`
+	Subject        string   `json:"subject,omitempty"`
+	Username       string   `json:"username,omitempty"`
+	Groups         []string `json:"groups,omitempty"`
 	Method         string   `json:"method"`
 	Path           string   `json:"path"`
 	DatasourceType string   `json:"datasource_type"`
@@ -198,6 +198,7 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 			next.ServeHTTP(wrapped, r)
 
 			// Resolve user identity from auth context.
+			proxyUser := GetAuthUser(r.Context())
 			authUser := simpleauth.GetAuthUser(r.Context())
 
 			entry := AuditEntry{
@@ -211,16 +212,20 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				UserAgent:      r.UserAgent(),
 			}
 
-			if authUser != nil {
-				entry.GitHubLogin = authUser.GitHubLogin
-				entry.GitHubID = authUser.GitHubID
-				entry.Orgs = authUser.Orgs
+			if proxyUser != nil {
+				entry.Subject = proxyUser.Subject
+				entry.Username = proxyUser.Username
+				entry.Groups = append([]string(nil), proxyUser.Groups...)
+			} else if authUser != nil {
+				entry.Subject = authUser.Subject
+				entry.Username = authUser.Username
+				entry.Groups = append([]string(nil), authUser.Groups...)
 			}
 
 			// Log the audit entry.
 			fields := logrus.Fields{
-				"github_login":    entry.GitHubLogin,
-				"github_id":       entry.GitHubID,
+				"subject":         entry.Subject,
+				"username":        entry.Username,
 				"method":          entry.Method,
 				"path":            entry.Path,
 				"datasource_type": entry.DatasourceType,
@@ -229,8 +234,8 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				"duration":        entry.Duration,
 			}
 
-			if len(entry.Orgs) > 0 {
-				fields["orgs"] = entry.Orgs
+			if len(entry.Groups) > 0 {
+				fields["groups"] = entry.Groups
 			}
 
 			if entry.DatasourceName != "" {

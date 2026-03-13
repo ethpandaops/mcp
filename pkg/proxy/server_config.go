@@ -68,6 +68,9 @@ type AuthConfig struct {
 	// IssuerURL is the external URL clients should use for auth and token validation.
 	IssuerURL string `yaml:"issuer_url,omitempty"`
 
+	// ClientID is the OIDC client identifier expected in bearer token audiences.
+	ClientID string `yaml:"client_id,omitempty"`
+
 	// GitHub configures the GitHub OAuth app used for user authentication.
 	GitHub *simpleauth.GitHubConfig `yaml:"github,omitempty"`
 
@@ -79,6 +82,9 @@ type AuthConfig struct {
 
 	// AccessTokenTTL is the lifetime of proxy-issued access tokens.
 	AccessTokenTTL time.Duration `yaml:"access_token_ttl,omitempty"`
+
+	// RefreshTokenTTL is the lifetime of proxy-issued refresh tokens.
+	RefreshTokenTTL time.Duration `yaml:"refresh_token_ttl,omitempty"`
 
 	// SuccessPage customizes the OAuth callback success page shown in the browser.
 	SuccessPage *simpleauth.SuccessPageConfig `yaml:"success_page,omitempty"`
@@ -182,6 +188,10 @@ func (c *ServerConfig) ApplyDefaults() {
 		c.Auth.AccessTokenTTL = 1 * time.Hour
 	}
 
+	if c.Auth.RefreshTokenTTL == 0 {
+		c.Auth.RefreshTokenTTL = 30 * 24 * time.Hour
+	}
+
 	// Rate limiting defaults.
 	if c.RateLimiting.RequestsPerMinute == 0 {
 		c.RateLimiting.RequestsPerMinute = 60
@@ -233,6 +243,16 @@ func (c *ServerConfig) Validate() error {
 
 		if strings.TrimSpace(c.Auth.IssuerURL) == "" {
 			return fmt.Errorf("auth.issuer_url is required")
+		}
+	}
+
+	if c.Auth.Mode == AuthModeOIDC {
+		if strings.TrimSpace(c.Auth.IssuerURL) == "" {
+			return fmt.Errorf("auth.issuer_url is required when auth.mode is 'oidc'")
+		}
+
+		if strings.TrimSpace(c.Auth.ClientID) == "" {
+			return fmt.Errorf("auth.client_id is required when auth.mode is 'oidc'")
 		}
 	}
 
