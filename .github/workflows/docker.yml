@@ -97,27 +97,6 @@ jobs:
           # Clean up the network created by the server.
           docker network rm panda-smoke-test 2>/dev/null || true
 
-      - name: Smoke test entrypoint backward compatibility
-        run: |
-          # Verify the entrypoint handles bare subcommands (no binary prefix).
-          # Deployments may override CMD with just "serve" from the old
-          # ENTRYPOINT ["panda-server"] era. The entrypoint must prepend the
-          # binary automatically.
-          LOGS=$(docker run --rm \
-            panda-server-smoke \
-            serve --help 2>&1 || true)
-
-          echo "$LOGS"
-
-          # If we see "No such file or directory" the entrypoint failed to
-          # resolve the bare subcommand to the panda-server binary.
-          if echo "$LOGS" | grep -qi "No such file or directory"; then
-            echo "FAIL: entrypoint did not resolve bare 'serve' subcommand"
-            exit 1
-          fi
-
-          echo "Entrypoint backward compatibility test passed"
-
   build-sandbox:
     runs-on:
       - self-hosted-ghr

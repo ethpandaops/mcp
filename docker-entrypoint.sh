@@ -20,21 +20,6 @@ if [ -S /var/run/docker.sock ]; then
     addgroup panda "$DOCKER_GROUP" 2>/dev/null || usermod -aG "$DOCKER_GROUP" panda 2>/dev/null || true
 fi
 
-# Backward compatibility: if the first argument is a panda-server subcommand
-# (not a binary path), prepend panda-server. This handles deployments that
-# override CMD with just "serve" from when ENTRYPOINT was ["panda-server"].
-case "$1" in
-    serve)
-        # Detect the binary location (goreleaser puts it in /usr/local/bin,
-        # the dev Dockerfile puts it in /app).
-        if command -v panda-server >/dev/null 2>&1; then
-            set -- panda-server "$@"
-        elif [ -x /app/panda-server ]; then
-            set -- /app/panda-server "$@"
-        fi
-        ;;
-esac
-
 # Drop to the panda user and exec the requested command.
 # Support both su-exec (Alpine) and gosu (Debian).
 if command -v su-exec >/dev/null 2>&1; then
