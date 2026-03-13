@@ -1,10 +1,7 @@
 package proxy
 
 import (
-	"bytes"
-	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -96,8 +93,7 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 			if !rl.Allow(userID) {
 				rl.log.WithField("user_id", userID).Debug("Rate limit exceeded")
 
-				user, org := resolveUserLabels(r.Context())
-				ProxyRateLimitRejectionsTotal.WithLabelValues(user, org).Inc()
+				ProxyRateLimitRejectionsTotal.WithLabelValues(extractDatasourceType(r.URL.Path)).Inc()
 
 				w.Header().Set("Retry-After", "60")
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
@@ -166,7 +162,6 @@ type AuditEntry struct {
 	Path           string   `json:"path"`
 	DatasourceType string   `json:"datasource_type"`
 	DatasourceName string   `json:"datasource_name,omitempty"`
-	Query          string   `json:"query,omitempty"`
 	StatusCode     int      `json:"status_code"`
 	ResponseBytes  int      `json:"response_bytes"`
 	Duration       string   `json:"duration"`
@@ -180,13 +175,7 @@ type Auditor struct {
 }
 
 // AuditorConfig configures the auditor.
-type AuditorConfig struct {
-	// LogQueries controls whether to log query content.
-	LogQueries bool
-
-	// MaxQueryLength is the maximum length of query to log.
-	MaxQueryLength int
-}
+type AuditorConfig struct{}
 
 // NewAuditor creates a new auditor.
 func NewAuditor(log logrus.FieldLogger, cfg AuditorConfig) *Auditor {
@@ -201,14 +190,6 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-
-			// Capture the request body before the downstream handler consumes it.
-			// Skip for S3 routes since those are binary file uploads.
-			var bodySnapshot string
-
-			if a.cfg.LogQueries && r.Body != nil && !isS3Route(r.URL.Path) {
-				bodySnapshot = captureBody(r, a.cfg.MaxQueryLength)
-			}
 
 			// Wrap response writer to capture status code and bytes.
 			wrapped := &responseCapture{ResponseWriter: w, statusCode: http.StatusOK}
@@ -236,16 +217,6 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				entry.Orgs = authUser.Orgs
 			}
 
-			// Add query if configured.
-			if a.cfg.LogQueries {
-				query := extractQuery(r, bodySnapshot)
-				if len(query) > a.cfg.MaxQueryLength {
-					query = query[:a.cfg.MaxQueryLength] + "..."
-				}
-
-				entry.Query = query
-			}
-
 			// Log the audit entry.
 			fields := logrus.Fields{
 				"github_login":    entry.GitHubLogin,
@@ -266,10 +237,6 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 				fields["datasource_name"] = entry.DatasourceName
 			}
 
-			if entry.Query != "" {
-				fields["query"] = entry.Query
-			}
-
 			if entry.UserAgent != "" {
 				fields["user_agent"] = entry.UserAgent
 			}
@@ -277,46 +244,4 @@ func (a *Auditor) Middleware() func(http.Handler) http.Handler {
 			a.log.WithFields(fields).Info("Audit")
 		})
 	}
-}
-
-// captureBody reads up to maxLen bytes from the request body and replaces it
-// with a new reader so downstream handlers can still consume it.
-func captureBody(r *http.Request, maxLen int) string {
-	// Read up to maxLen+1 to detect truncation without reading the entire body.
-	limit := int64(maxLen + 1)
-
-	buf, err := io.ReadAll(io.LimitReader(r.Body, limit))
-	if err != nil || len(buf) == 0 {
-		// Restore body even on error.
-		r.Body = io.NopCloser(bytes.NewReader(buf))
-
-		return ""
-	}
-
-	// Restore the full body for downstream handlers.
-	remaining, _ := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(buf), bytes.NewReader(remaining)))
-
-	return strings.TrimSpace(string(buf))
-}
-
-// isS3Route returns true if the path is an S3 route (binary uploads).
-func isS3Route(path string) bool {
-	return len(path) > 3 && path[:4] == "/s3/"
-}
-
-// extractQuery extracts query content from the request.
-// It checks URL query parameters first, then falls back to the captured POST body.
-func extractQuery(r *http.Request, bodySnapshot string) string {
-	// Try URL query parameter first (used by all datasources for GET requests).
-	if q := r.URL.Query().Get("query"); q != "" {
-		return q
-	}
-
-	// Fall back to captured POST body (ClickHouse sends SQL as POST body).
-	if bodySnapshot != "" {
-		return bodySnapshot
-	}
-
-	return ""
 }

@@ -99,7 +99,7 @@ func New(log logrus.FieldLogger, cfg Config) Client {
 	}
 
 	if len(cfg.Scopes) == 0 {
-		cfg.Scopes = []string{"openid", "email", "groups", "offline_access"}
+		cfg.Scopes = []string{"openid", "email", "groups"}
 	}
 
 	return &client{

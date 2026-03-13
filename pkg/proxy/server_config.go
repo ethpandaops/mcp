@@ -32,9 +32,6 @@ type ServerConfig struct {
 	// Loki holds Loki instance configurations.
 	Loki []LokiInstanceConfig `yaml:"loki,omitempty"`
 
-	// S3 holds S3 storage configuration.
-	S3 *S3Config `yaml:"s3,omitempty"`
-
 	// EthNode holds Ethereum node API access configuration.
 	EthNode *EthNodeInstanceConfig `yaml:"ethnode,omitempty"`
 
@@ -67,6 +64,9 @@ type HTTPServerConfig struct {
 type AuthConfig struct {
 	// Mode is the authentication mode.
 	Mode AuthMode `yaml:"mode"`
+
+	// IssuerURL is the external URL clients should use for auth and token validation.
+	IssuerURL string `yaml:"issuer_url,omitempty"`
 
 	// GitHub configures the GitHub OAuth app used for user authentication.
 	GitHub *simpleauth.GitHubConfig `yaml:"github,omitempty"`
@@ -123,16 +123,6 @@ type EthNodeInstanceConfig struct {
 	Password string `yaml:"password"`
 }
 
-// S3Config holds S3 storage configuration.
-type S3Config struct {
-	Endpoint        string `yaml:"endpoint"`
-	AccessKey       string `yaml:"access_key"`
-	SecretKey       string `yaml:"secret_key"`
-	Bucket          string `yaml:"bucket"`
-	Region          string `yaml:"region,omitempty"`
-	PublicURLPrefix string `yaml:"public_url_prefix,omitempty"`
-}
-
 // RateLimitConfig holds rate limiting configuration.
 type RateLimitConfig struct {
 	// Enabled controls whether rate limiting is active.
@@ -149,18 +139,15 @@ type RateLimitConfig struct {
 type AuditConfig struct {
 	// Enabled controls whether audit logging is active.
 	Enabled bool `yaml:"enabled"`
-
-	// LogQueries controls whether to log query content.
-	LogQueries bool `yaml:"log_queries,omitempty"`
-
-	// MaxQueryLength is the maximum length of query to log.
-	MaxQueryLength int `yaml:"max_query_length,omitempty"`
 }
 
 // MetricsConfig holds Prometheus metrics configuration for the proxy.
 type MetricsConfig struct {
 	// Enabled controls whether the Prometheus metrics server is active.
 	Enabled bool `yaml:"enabled"`
+
+	// ListenAddr is the address to serve the /metrics endpoint on.
+	ListenAddr string `yaml:"listen_addr,omitempty"`
 
 	// Port is the port to serve the /metrics endpoint on (default: 9090).
 	Port int `yaml:"port,omitempty"`
@@ -204,14 +191,13 @@ func (c *ServerConfig) ApplyDefaults() {
 		c.RateLimiting.BurstSize = 10
 	}
 
-	// Audit defaults.
-	if c.Audit.MaxQueryLength == 0 {
-		c.Audit.MaxQueryLength = 500
-	}
-
 	// Metrics defaults.
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
+	}
+
+	if c.Metrics.ListenAddr == "" {
+		c.Metrics.ListenAddr = fmt.Sprintf("127.0.0.1:%d", c.Metrics.Port)
 	}
 
 	// ClickHouse defaults.
@@ -243,6 +229,10 @@ func (c *ServerConfig) Validate() error {
 
 		if c.Auth.Tokens.SecretKey == "" {
 			return fmt.Errorf("auth.tokens.secret_key is required")
+		}
+
+		if strings.TrimSpace(c.Auth.IssuerURL) == "" {
+			return fmt.Errorf("auth.issuer_url is required")
 		}
 	}
 
@@ -288,7 +278,7 @@ func (c *ServerConfig) Validate() error {
 }
 
 // ToHandlerConfigs converts the server config to handler configs.
-func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handlers.PrometheusConfig, []handlers.LokiConfig, *handlers.S3Config, *handlers.EthNodeConfig) {
+func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handlers.PrometheusConfig, []handlers.LokiConfig, *handlers.EthNodeConfig) {
 	// Convert ClickHouse configs.
 	chConfigs := make([]handlers.ClickHouseConfig, len(c.ClickHouse))
 	for i, ch := range c.ClickHouse {
@@ -330,19 +320,6 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 		}
 	}
 
-	// Convert S3 config.
-	var s3Config *handlers.S3Config
-	if c.S3 != nil && c.S3.Endpoint != "" {
-		s3Config = &handlers.S3Config{
-			Endpoint:        c.S3.Endpoint,
-			AccessKey:       c.S3.AccessKey,
-			SecretKey:       c.S3.SecretKey,
-			Bucket:          c.S3.Bucket,
-			Region:          c.S3.Region,
-			PublicURLPrefix: c.S3.PublicURLPrefix,
-		}
-	}
-
 	// Convert EthNode config.
 	var ethNodeConfig *handlers.EthNodeConfig
 	if c.EthNode != nil && c.EthNode.Username != "" {
@@ -352,7 +329,7 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 		}
 	}
 
-	return chConfigs, promConfigs, lokiConfigs, s3Config, ethNodeConfig
+	return chConfigs, promConfigs, lokiConfigs, ethNodeConfig
 }
 
 // envVarWithDefaultPattern matches ${VAR_NAME:-default} patterns.

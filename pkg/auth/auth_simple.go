@@ -35,14 +35,8 @@ const (
 	// Authorization code TTL.
 	authCodeTTL = 5 * time.Minute
 
-	// Access token TTL.
-	accessTokenTTL = 1 * time.Hour
-
-	// Refresh token TTL.
-	refreshTokenTTL = 30 * 24 * time.Hour
-
-	// refreshTokenType distinguishes refresh tokens from access tokens.
-	refreshTokenType = "refresh"
+	// Default access token TTL.
+	defaultAccessTokenTTL = 1 * time.Hour
 
 	// deviceCodeTTL is how long a user has to complete the device flow.
 	deviceCodeTTL = 15 * time.Minute
@@ -73,6 +67,8 @@ type simpleService struct {
 	github      *github.Client
 	secretKey   []byte
 	allowedOrgs []string
+	issuerURL   string
+	tokenTTL    time.Duration
 
 	// Pending authorization requests (state -> pendingAuth).
 	pending   map[string]*pendingAuth
@@ -130,17 +126,6 @@ type deviceAuth struct {
 	Orgs        []string
 }
 
-// refreshTokenClaims are the JWT claims for stateless refresh tokens.
-type refreshTokenClaims struct {
-	jwt.RegisteredClaims
-	GitHubLogin string   `json:"github_login"`
-	GitHubID    int64    `json:"github_id"`
-	Orgs        []string `json:"orgs,omitempty"`
-	ClientID    string   `json:"client_id"`
-	Resource    string   `json:"resource"`
-	TokenType   string   `json:"token_type"`
-}
-
 // tokenClaims are the JWT claims for access tokens.
 type tokenClaims struct {
 	jwt.RegisteredClaims
@@ -160,6 +145,15 @@ func NewSimpleService(log logrus.FieldLogger, cfg Config) (SimpleService, error)
 		return &simpleService{log: log, cfg: cfg}, nil
 	}
 
+	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/")
+	if cfg.IssuerURL == "" {
+		return nil, fmt.Errorf("issuer_url is required when auth is enabled")
+	}
+
+	if cfg.AccessTokenTTL <= 0 {
+		cfg.AccessTokenTTL = defaultAccessTokenTTL
+	}
+
 	if cfg.GitHub == nil {
 		return nil, fmt.Errorf("github configuration is required when auth is enabled")
 	}
@@ -174,6 +168,8 @@ func NewSimpleService(log logrus.FieldLogger, cfg Config) (SimpleService, error)
 		github:      github.NewClient(log, cfg.GitHub.ClientID, cfg.GitHub.ClientSecret),
 		secretKey:   []byte(cfg.Tokens.SecretKey),
 		allowedOrgs: cfg.AllowedOrgs,
+		issuerURL:   cfg.IssuerURL,
+		tokenTTL:    cfg.AccessTokenTTL,
 		pending:     make(map[string]*pendingAuth, 32),
 		codes:       make(map[string]*issuedCode, 32),
 		devices:     make(map[string]*deviceAuth, 16),
@@ -268,13 +264,13 @@ func (s *simpleService) Middleware() func(http.Handler) http.Handler {
 			// Get token from Authorization header.
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				baseURL := baseURLFromRequest(r)
+				baseURL := s.issuerURL
 				s.writeUnauthorized(w, baseURL, "missing or invalid Authorization header")
 				return
 			}
 
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			baseURL := baseURLFromRequest(r)
+			baseURL := s.issuerURL
 
 			// Validate token.
 			claims := &tokenClaims{}
@@ -378,7 +374,7 @@ func (s *simpleService) cleanup() {
 
 // handleResourceMetadata returns RFC 9728 protected resource metadata.
 func (s *simpleService) handleResourceMetadata(w http.ResponseWriter, r *http.Request) {
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 
 	metadata := map[string]any{
 		"resource":                 baseURL,
@@ -394,7 +390,7 @@ func (s *simpleService) handleResourceMetadata(w http.ResponseWriter, r *http.Re
 
 // handleServerMetadata returns RFC 8414 authorization server metadata.
 func (s *simpleService) handleServerMetadata(w http.ResponseWriter, r *http.Request) {
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 
 	metadata := map[string]any{
 		"issuer":                                baseURL,
@@ -402,10 +398,10 @@ func (s *simpleService) handleServerMetadata(w http.ResponseWriter, r *http.Requ
 		"token_endpoint":                        baseURL + "/auth/token",
 		"device_authorization_endpoint":         baseURL + "/auth/device/code",
 		"response_types_supported":              []string{"code"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		"grant_types_supported":                 []string{"authorization_code", "urn:ietf:params:oauth:grant-type:device_code"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
-		"scopes_supported":                      []string{"mcp", "offline_access"},
+		"scopes_supported":                      []string{"mcp"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -440,6 +436,11 @@ func (s *simpleService) handleAuthorize(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if !s.isExpectedResource(resource) {
+		s.writeError(w, http.StatusBadRequest, "invalid_target", "unsupported resource")
+		return
+	}
+
 	if redirectURI == "" {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "redirect_uri is required")
 		return
@@ -471,7 +472,7 @@ func (s *simpleService) handleAuthorize(w http.ResponseWriter, r *http.Request) 
 	s.pendingMu.Unlock()
 
 	// Redirect to GitHub.
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 	callbackURL := baseURL + "/auth/callback"
 	githubURL := s.github.GetAuthorizationURL(callbackURL, githubState, "read:user read:org")
 
@@ -512,7 +513,7 @@ func (s *simpleService) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Exchange code for GitHub token.
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 	callbackURL := baseURL + "/auth/callback"
 	githubToken, err := s.github.ExchangeCode(ctx, code, callbackURL)
 	if err != nil {
@@ -645,13 +646,11 @@ func (s *simpleService) handleToken(w http.ResponseWriter, r *http.Request) {
 	switch grantType {
 	case "authorization_code":
 		s.handleAuthorizationCodeGrant(w, r)
-	case "refresh_token":
-		s.handleRefreshTokenGrant(w, r)
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		s.handleDeviceTokenGrant(w, r)
 	default:
 		s.writeError(w, http.StatusBadRequest, "unsupported_grant_type",
-			"supported grant types are authorization_code, refresh_token, and device_code")
+			"supported grant types are authorization_code and device_code")
 	}
 }
 
@@ -717,7 +716,7 @@ func (s *simpleService) handleAuthorizationCodeGrant(w http.ResponseWriter, r *h
 	issued.Used = true
 	s.codesMu.Unlock()
 
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 
 	accessToken, err := s.issueAccessToken(baseURL, issued.Resource, issued.GitHubLogin, issued.GitHubID, issued.Orgs)
 	if err != nil {
@@ -726,73 +725,12 @@ func (s *simpleService) handleAuthorizationCodeGrant(w http.ResponseWriter, r *h
 		return
 	}
 
-	refreshToken, err := s.issueRefreshToken(
-		baseURL, issued.ClientID, issued.Resource, issued.GitHubLogin, issued.GitHubID, issued.Orgs,
-	)
-	if err != nil {
-		s.log.WithError(err).Error("Failed to create refresh token")
-		s.writeError(w, http.StatusInternalServerError, "server_error", "failed to create refresh token")
-		return
-	}
-
 	s.log.WithFields(logrus.Fields{
 		"login":     issued.GitHubLogin,
 		"client_id": clientID,
 	}).Info("Token issued")
 
-	s.writeTokenResponse(w, accessToken, refreshToken)
-}
-
-func (s *simpleService) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request) {
-	refreshToken := r.FormValue("refresh_token")
-	clientID := r.FormValue("client_id")
-	resource := r.FormValue("resource")
-
-	if refreshToken == "" || clientID == "" {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "missing required parameters")
-		return
-	}
-
-	baseURL := baseURLFromRequest(r)
-
-	// Validate the stateless refresh token JWT.
-	claims := &refreshTokenClaims{}
-	token, err := jwt.ParseWithClaims(refreshToken, claims, func(t *jwt.Token) (any, error) {
-		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secretKey, nil
-	}, jwt.WithIssuer(baseURL), jwt.WithExpirationRequired())
-
-	if err != nil || !token.Valid {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "invalid refresh token")
-		return
-	}
-
-	if claims.TokenType != refreshTokenType {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "invalid refresh token")
-		return
-	}
-
-	if claims.ClientID != clientID {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "parameter mismatch")
-		return
-	}
-
-	if resource != "" && claims.Resource != resource {
-		s.writeError(w, http.StatusBadRequest, "invalid_grant", "parameter mismatch")
-		return
-	}
-
-	accessToken, err := s.issueAccessToken(baseURL, claims.Resource, claims.GitHubLogin, claims.GitHubID, claims.Orgs)
-	if err != nil {
-		s.log.WithError(err).Error("Failed to sign refreshed token")
-		s.writeError(w, http.StatusInternalServerError, "server_error", "failed to create token")
-		return
-	}
-
-	// Return the same refresh token — it's stateless and still valid.
-	s.writeTokenResponse(w, accessToken, refreshToken)
+	s.writeTokenResponse(w, accessToken, "")
 }
 
 // handleDeviceCode handles POST /auth/device/code (RFC 8628 device authorization request).
@@ -812,6 +750,11 @@ func (s *simpleService) handleDeviceCode(w http.ResponseWriter, r *http.Request)
 
 	if resource == "" {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "resource is required")
+		return
+	}
+
+	if !s.isExpectedResource(resource) {
+		s.writeError(w, http.StatusBadRequest, "invalid_target", "unsupported resource")
 		return
 	}
 
@@ -842,7 +785,7 @@ func (s *simpleService) handleDeviceCode(w http.ResponseWriter, r *http.Request)
 	s.userCodes[normalizeUserCode(userCode)] = deviceCode
 	s.devicesMu.Unlock()
 
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 
 	s.log.WithFields(logrus.Fields{
 		"client_id": clientID,
@@ -933,7 +876,7 @@ func (s *simpleService) handleDeviceVerify(w http.ResponseWriter, r *http.Reques
 	s.pendingMu.Unlock()
 
 	// Redirect to GitHub for authentication.
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 	callbackURL := baseURL + "/auth/callback"
 	githubURL := s.github.GetAuthorizationURL(callbackURL, githubState, "read:user read:org")
 
@@ -998,7 +941,7 @@ func (s *simpleService) handleDeviceTokenGrant(w http.ResponseWriter, r *http.Re
 	delete(s.devices, deviceCode)
 	s.devicesMu.Unlock()
 
-	baseURL := baseURLFromRequest(r)
+	baseURL := s.issuerURL
 
 	accessToken, err := s.issueAccessToken(baseURL, resource, login, ghID, orgs)
 	if err != nil {
@@ -1008,20 +951,12 @@ func (s *simpleService) handleDeviceTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	refreshToken, err := s.issueRefreshToken(baseURL, clientID, resource, login, ghID, orgs)
-	if err != nil {
-		s.log.WithError(err).Error("Failed to create device refresh token")
-		s.writeError(w, http.StatusInternalServerError, "server_error", "failed to create refresh token")
-
-		return
-	}
-
 	s.log.WithFields(logrus.Fields{
 		"login":     login,
 		"client_id": clientID,
 	}).Info("Device token issued")
 
-	s.writeTokenResponse(w, accessToken, refreshToken)
+	s.writeTokenResponse(w, accessToken, "")
 }
 
 func (s *simpleService) issueAccessToken(
@@ -1034,39 +969,11 @@ func (s *simpleService) issueAccessToken(
 			Subject:   fmt.Sprintf("%d", githubID),
 			Audience:  jwt.ClaimStrings{resource},
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(accessTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
 		},
 		GitHubLogin: githubLogin,
 		GitHubID:    githubID,
 		Orgs:        orgs,
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.secretKey)
-}
-
-func (s *simpleService) issueRefreshToken(
-	issuerURL string,
-	clientID string,
-	resource string,
-	githubLogin string,
-	githubID int64,
-	orgs []string,
-) (string, error) {
-	now := time.Now()
-	claims := &refreshTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    issuerURL,
-			Subject:   fmt.Sprintf("%d", githubID),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(refreshTokenTTL)),
-		},
-		GitHubLogin: githubLogin,
-		GitHubID:    githubID,
-		Orgs:        append([]string(nil), orgs...),
-		ClientID:    clientID,
-		Resource:    resource,
-		TokenType:   refreshTokenType,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -1080,7 +987,7 @@ func (s *simpleService) writeTokenResponse(w http.ResponseWriter, accessToken, r
 	response := map[string]any{
 		"access_token": accessToken,
 		"token_type":   "Bearer",
-		"expires_in":   int(accessTokenTTL.Seconds()),
+		"expires_in":   int(s.tokenTTL.Seconds()),
 	}
 	if refreshToken != "" {
 		response["refresh_token"] = refreshToken
@@ -1182,23 +1089,6 @@ func (s *simpleService) writeUnauthorized(w http.ResponseWriter, baseURL, descri
 	})
 }
 
-// baseURLFromRequest derives the external base URL from the incoming request's
-// Host header and TLS state. Behind a reverse proxy that sets X-Forwarded-Proto
-// and X-Forwarded-Host, those headers take precedence.
-func baseURLFromRequest(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-		scheme = proto
-	}
-
-	host := r.Host
-	if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
-		host = fwdHost
-	}
-
-	return strings.TrimSuffix(fmt.Sprintf("%s://%s", scheme, host), "/")
+func (s *simpleService) isExpectedResource(resource string) bool {
+	return strings.TrimRight(strings.TrimSpace(resource), "/") == s.issuerURL
 }

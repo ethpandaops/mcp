@@ -275,6 +275,9 @@ func resolveAuthTargetFromConfig() *authTarget {
 	}
 
 	resource := strings.TrimRight(strings.TrimSpace(cfg.Proxy.URL), "/")
+	if issuerURL != "" {
+		resource = issuerURL
+	}
 	if resource == "" {
 		resource = issuerURL
 	}

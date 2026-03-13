@@ -1,12 +1,16 @@
 package auth
 
+import "time"
+
 // Config holds OAuth server configuration for a local product edge.
 type Config struct {
-	Enabled     bool               `yaml:"enabled"`
-	GitHub      *GitHubConfig      `yaml:"github,omitempty"`
-	AllowedOrgs []string           `yaml:"allowed_orgs,omitempty"`
-	Tokens      TokensConfig       `yaml:"tokens"`
-	SuccessPage *SuccessPageConfig `yaml:"success_page,omitempty"`
+	Enabled        bool               `yaml:"enabled"`
+	IssuerURL      string             `yaml:"issuer_url,omitempty"`
+	GitHub         *GitHubConfig      `yaml:"github,omitempty"`
+	AllowedOrgs    []string           `yaml:"allowed_orgs,omitempty"`
+	Tokens         TokensConfig       `yaml:"tokens"`
+	AccessTokenTTL time.Duration      `yaml:"access_token_ttl,omitempty"`
+	SuccessPage    *SuccessPageConfig `yaml:"success_page,omitempty"`
 }
 
 // GitHubConfig holds GitHub OAuth configuration.

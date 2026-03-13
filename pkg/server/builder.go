@@ -195,7 +195,10 @@ func buildProxyAuthMetadata(cfg *config.Config) *serverapi.ProxyAuthMetadataResp
 		issuerURL = strings.TrimRight(cfg.Proxy.URL, "/")
 	}
 
-	resource := strings.TrimRight(cfg.Proxy.URL, "/")
+	resource := issuerURL
+	if resource == "" {
+		resource = strings.TrimRight(cfg.Proxy.URL, "/")
+	}
 
 	return &serverapi.ProxyAuthMetadataResponse{
 		Enabled:   issuerURL != "" && cfg.Proxy.Auth.ClientID != "",
