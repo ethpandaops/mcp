@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ethpandaops/panda/pkg/eips"
 	"github.com/ethpandaops/panda/pkg/module"
 	"github.com/ethpandaops/panda/pkg/resource"
 	"github.com/ethpandaops/panda/runbooks"
@@ -414,8 +415,9 @@ func clampSearchLimit(limit, max int) int {
 }
 
 var (
-	_ ExampleSearcher    = (*resource.ExampleIndex)(nil)
-	_ RunbookSearcher    = (*resource.RunbookIndex)(nil)
-	_ RunbookTagProvider = (*runbooks.Registry)(nil)
-	_ EIPSearcher        = (*resource.EIPIndex)(nil)
+	_ ExampleSearcher     = (*resource.ExampleIndex)(nil)
+	_ RunbookSearcher     = (*resource.RunbookIndex)(nil)
+	_ RunbookTagProvider  = (*runbooks.Registry)(nil)
+	_ EIPSearcher         = (*resource.EIPIndex)(nil)
+	_ EIPMetadataProvider = (*eips.Registry)(nil)
 )

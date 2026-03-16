@@ -28,7 +28,6 @@ type Registry struct {
 	log      logrus.FieldLogger
 	cacheDir string
 	eips     []types.EIP
-	byNumber map[int]*types.EIP
 	cache    *cacheData
 	mu       sync.RWMutex
 }
@@ -211,11 +210,6 @@ func (r *Registry) Refresh(ctx context.Context) error {
 	}
 
 	r.eips = eipList
-	r.byNumber = make(map[int]*types.EIP, len(eipList))
-
-	for i := range r.eips {
-		r.byNumber[r.eips[i].Number] = &r.eips[i]
-	}
 
 	return writeCache(r.cacheDir, r.cache)
 }
@@ -249,19 +243,13 @@ func buildRegistry(
 	cacheDir string,
 	cache *cacheData,
 ) *Registry {
-	byNumber := make(map[int]*types.EIP, len(cache.EIPs))
 	eips := make([]types.EIP, len(cache.EIPs))
 	copy(eips, cache.EIPs)
-
-	for i := range eips {
-		byNumber[eips[i].Number] = &eips[i]
-	}
 
 	return &Registry{
 		log:      log,
 		cacheDir: cacheDir,
 		eips:     eips,
-		byNumber: byNumber,
 		cache:    cache,
 	}
 }

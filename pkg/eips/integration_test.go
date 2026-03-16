@@ -1,3 +1,5 @@
+//go:build integration
+
 package eips
 
 import (
@@ -14,10 +16,6 @@ import (
 )
 
 func TestFetchAndParse(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-
 	ctx := context.Background()
 	f := newFetcher()
 
@@ -46,10 +44,6 @@ func TestFetchAndParse(t *testing.T) {
 }
 
 func TestRegistryWithCache(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-
 	ctx := context.Background()
 	log := logrus.New()
 	tmpDir := t.TempDir()
@@ -71,10 +65,6 @@ func TestRegistryWithCache(t *testing.T) {
 }
 
 func TestVectorCachePersistence(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-
 	ctx := context.Background()
 	log := logrus.New()
 	tmpDir := t.TempDir()

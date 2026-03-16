@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sirupsen/logrus"
 
@@ -221,7 +222,6 @@ var (
 	codeBlockRe = regexp.MustCompile("(?s)```.*?```")
 	linkRe      = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
 	bareURLRe   = regexp.MustCompile(`https?://\S+`)
-	tableSepRe  = regexp.MustCompile(`^\s*\|[-|:\s]+\|\s*$`)
 )
 
 // stripForEmbedding removes code blocks, URLs, tables, and dense hex
@@ -235,10 +235,6 @@ func stripForEmbedding(text string) string {
 	filtered := make([]string, 0, len(lines))
 
 	for _, line := range lines {
-		if tableSepRe.MatchString(line) {
-			continue
-		}
-
 		if strings.HasPrefix(strings.TrimSpace(line), "|") {
 			continue
 		}
@@ -267,6 +263,11 @@ func sha256Hex(text string) string {
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
+	}
+
+	// Walk back to avoid splitting a multi-byte UTF-8 character.
+	for maxLen > 0 && !utf8.RuneStart(s[maxLen]) {
+		maxLen--
 	}
 
 	return s[:maxLen]

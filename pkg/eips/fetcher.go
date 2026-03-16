@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -127,8 +127,8 @@ func extractEIPs(r io.Reader) ([]types.EIP, error) {
 			continue
 		}
 
-		dir := filepath.Base(filepath.Dir(header.Name))
-		filename := filepath.Base(header.Name)
+		dir := path.Base(path.Dir(header.Name))
+		filename := path.Base(header.Name)
 
 		if dir != "EIPS" || !eipFilePattern.MatchString(filename) {
 			continue
