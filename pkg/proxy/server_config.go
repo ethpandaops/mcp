@@ -111,6 +111,8 @@ type PrometheusInstanceConfig struct {
 	URL         string `yaml:"url"`
 	Username    string `yaml:"username,omitempty"`
 	Password    string `yaml:"password,omitempty"`
+	SkipVerify  bool   `yaml:"skip_verify,omitempty"`
+	Timeout     int    `yaml:"timeout,omitempty"`
 }
 
 // LokiInstanceConfig holds Loki instance configuration.
@@ -120,6 +122,8 @@ type LokiInstanceConfig struct {
 	URL         string `yaml:"url"`
 	Username    string `yaml:"username,omitempty"`
 	Password    string `yaml:"password,omitempty"`
+	SkipVerify  bool   `yaml:"skip_verify,omitempty"`
+	Timeout     int    `yaml:"timeout,omitempty"`
 }
 
 // EthNodeInstanceConfig holds Ethereum node API access configuration.
@@ -325,6 +329,8 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 			URL:         prom.URL,
 			Username:    prom.Username,
 			Password:    prom.Password,
+			SkipVerify:  prom.SkipVerify,
+			Timeout:     prom.Timeout,
 		}
 	}
 
@@ -337,6 +343,8 @@ func (c *ServerConfig) ToHandlerConfigs() ([]handlers.ClickHouseConfig, []handle
 			URL:         loki.URL,
 			Username:    loki.Username,
 			Password:    loki.Password,
+			SkipVerify:  loki.SkipVerify,
+			Timeout:     loki.Timeout,
 		}
 	}
 
