@@ -48,12 +48,8 @@ type ServerConfig struct {
 	Transport string `yaml:"transport,omitempty"`
 }
 
-// SemanticSearchConfig holds configuration for semantic example search.
-type SemanticSearchConfig struct {
-	// ModelPath is the path to the ONNX embedding model directory.
-	// The directory must contain model.onnx and tokenizer.json.
-	ModelPath string `yaml:"model_path,omitempty"`
-}
+// SemanticSearchConfig holds configuration for semantic search.
+type SemanticSearchConfig struct{}
 
 // SandboxConfig holds sandbox execution configuration.
 type SandboxConfig struct {

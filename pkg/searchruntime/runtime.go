@@ -3,16 +3,13 @@ package searchruntime
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/panda/pkg/config"
 	"github.com/ethpandaops/panda/pkg/eips"
 	"github.com/ethpandaops/panda/pkg/embedding"
 	"github.com/ethpandaops/panda/pkg/module"
+	"github.com/ethpandaops/panda/pkg/proxy"
 	"github.com/ethpandaops/panda/pkg/resource"
 	"github.com/ethpandaops/panda/runbooks"
 )
@@ -24,30 +21,32 @@ type Runtime struct {
 	RunbookIndex    *resource.RunbookIndex
 	EIPRegistry     *eips.Registry
 	EIPIndex        *resource.EIPIndex
-	embedder        *embedding.Embedder
+	embedder        embedding.Embedder
 }
 
 // Build creates a new search runtime with example, runbook, and EIP indices.
+// Embedding is provided by the proxy's remote embedding service.
+// Returns nil if the proxy does not have embedding configured.
 func Build(
 	ctx context.Context,
 	log logrus.FieldLogger,
-	cfg config.SemanticSearchConfig,
 	moduleRegistry *module.Registry,
+	proxyService proxy.Service,
 ) (*Runtime, error) {
-	modelPath, searched := resolveModelPath(cfg.ModelPath)
-	if modelPath == "" {
-		log.WithField("searched", strings.Join(searched, ", ")).
-			Warn("Embedding model not found — semantic search disabled. Run 'make download-models' to enable it.")
+	if proxyService == nil || !proxyService.EmbeddingAvailable() {
+		log.Warn("Proxy embedding not available — semantic search disabled")
 
 		return nil, nil
 	}
 
-	embedder, err := embedding.New(modelPath)
-	if err != nil {
-		log.WithError(err).Warn("Failed to initialize embedder — semantic search disabled")
+	log.WithField("model", proxyService.EmbeddingModel()).
+		Info("Using remote embedder via proxy")
 
-		return nil, nil
-	}
+	embedder := embedding.NewRemote(
+		log,
+		proxyService.URL(),
+		func() string { return proxyService.RegisterToken("embedding") },
+	)
 
 	runtime := &Runtime{embedder: embedder}
 
@@ -128,82 +127,4 @@ func (r *Runtime) Close() error {
 	}
 
 	return nil
-}
-
-func resolveModelPath(configuredPath string) (string, []string) {
-	return resolveModelPathWithExecutable(configuredPath, executableDir())
-}
-
-// resolveModelPathWithExecutable searches for the ONNX model directory.
-// The model directory must contain model.onnx and tokenizer.json.
-func resolveModelPathWithExecutable(configuredPath, execDir string) (string, []string) {
-	defaultModel := "models/all-MiniLM-L6-v2"
-	containerModel := "/usr/share/panda/all-MiniLM-L6-v2"
-
-	candidates := make([]string, 0, 6)
-	add := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-
-		path = filepath.Clean(path)
-		for _, candidate := range candidates {
-			if candidate == path {
-				return
-			}
-		}
-
-		candidates = append(candidates, path)
-	}
-
-	if envPath := os.Getenv("ETHPANDAOPS_SEARCH_MODEL_PATH"); envPath != "" {
-		add(envPath)
-	}
-
-	if configuredPath != "" {
-		add(configuredPath)
-		if !filepath.IsAbs(configuredPath) && execDir != "" {
-			add(filepath.Join(execDir, configuredPath))
-		}
-	} else {
-		add(defaultModel)
-		if execDir != "" {
-			add(filepath.Join(execDir, defaultModel))
-		}
-		add(containerModel)
-	}
-
-	for _, candidate := range candidates {
-		if isModelDir(candidate) {
-			return candidate, candidates
-		}
-	}
-
-	return "", candidates
-}
-
-// isModelDir checks if a directory contains the required ONNX model files.
-func isModelDir(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || !info.IsDir() {
-		return false
-	}
-
-	for _, required := range []string{"model.onnx", "tokenizer.json"} {
-		if _, err := os.Stat(filepath.Join(path, required)); err != nil {
-			return false
-		}
-	}
-
-	return true
-}
-
-func executableDir() string {
-	path, err := os.Executable()
-	if err != nil || path == "" {
-		return ""
-	}
-
-	return filepath.Dir(path)
 }

@@ -44,4 +44,9 @@ type Service interface {
 
 	// EthNodeAvailable returns true if ethnode proxy access is configured.
 	EthNodeAvailable() bool
+
+	// EmbeddingAvailable returns true if the proxy has embedding configured.
+	EmbeddingAvailable() bool
+	// EmbeddingModel returns the configured embedding model name.
+	EmbeddingModel() string
 }

@@ -25,14 +25,14 @@ type indexedRunbook struct {
 
 // RunbookIndex provides semantic search over runbooks.
 type RunbookIndex struct {
-	embedder *embedding.Embedder
+	embedder embedding.Embedder
 	runbooks []indexedRunbook
 }
 
 // NewRunbookIndex creates and populates a semantic search index from runbooks.
 func NewRunbookIndex(
 	log logrus.FieldLogger,
-	embedder *embedding.Embedder,
+	embedder embedding.Embedder,
 	runbooks []types.Runbook,
 ) (*RunbookIndex, error) {
 	log = log.WithField("component", "runbook_index")

@@ -34,7 +34,7 @@ type indexedEIPChunk struct {
 
 // EIPIndex provides semantic search over EIPs with hybrid scoring.
 type EIPIndex struct {
-	embedder *embedding.Embedder
+	embedder embedding.Embedder
 	chunks   []indexedEIPChunk
 	eips     []types.EIP
 }
@@ -44,7 +44,7 @@ type EIPIndex struct {
 // Returns the index and the updated vector map (for cache persistence).
 func NewEIPIndex(
 	log logrus.FieldLogger,
-	embedder *embedding.Embedder,
+	embedder embedding.Embedder,
 	eips []types.EIP,
 	cachedVectors map[string]types.EIPVector,
 ) (*EIPIndex, map[string]types.EIPVector, error) {

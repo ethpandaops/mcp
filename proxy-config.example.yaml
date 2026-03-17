@@ -114,6 +114,14 @@ loki:
 #   allowed_orgs:
 #     - ethpandaops
 
+# Embedding API (optional — enables remote embedding for semantic search)
+# embedding:
+#   api_key: "${OPENROUTER_API_KEY}"
+#   model: "openai/text-embedding-3-small"
+#   cache:
+#     backend: memory  # or "redis"
+#     # redis_url: "redis://localhost:6379"
+
 # Rate limiting
 rate_limiting:
   enabled: true

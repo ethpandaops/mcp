@@ -43,6 +43,9 @@ type ServerConfig struct {
 
 	// Metrics holds Prometheus metrics configuration.
 	Metrics MetricsConfig `yaml:"metrics"`
+
+	// Embedding holds optional embedding API configuration.
+	Embedding *EmbeddingConfig `yaml:"embedding,omitempty"`
 }
 
 // HTTPServerConfig holds HTTP server configuration.
@@ -180,6 +183,30 @@ type AuditConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 
+// EmbeddingConfig holds configuration for the remote embedding API.
+type EmbeddingConfig struct {
+	// APIKey is the API key for the embedding provider (e.g., OpenRouter).
+	APIKey string `yaml:"api_key"`
+
+	// Model is the embedding model name (default: "openai/text-embedding-3-small").
+	Model string `yaml:"model,omitempty"`
+
+	// APIURL is the base URL of the embedding API (default: "https://openrouter.ai/api/v1").
+	APIURL string `yaml:"api_url,omitempty"`
+
+	// Cache holds embedding cache configuration.
+	Cache EmbeddingCacheConfig `yaml:"cache"`
+}
+
+// EmbeddingCacheConfig holds cache configuration for embeddings.
+type EmbeddingCacheConfig struct {
+	// Backend is the cache backend: "memory" (default) or "redis".
+	Backend string `yaml:"backend,omitempty"`
+
+	// RedisURL is the Redis connection URL (required when backend is "redis").
+	RedisURL string `yaml:"redis_url,omitempty"`
+}
+
 // MetricsConfig holds Prometheus metrics configuration for the proxy.
 type MetricsConfig struct {
 	// Enabled controls whether the Prometheus metrics server is active.
@@ -243,6 +270,21 @@ func (c *ServerConfig) ApplyDefaults() {
 		c.Metrics.ListenAddr = fmt.Sprintf("127.0.0.1:%d", c.Metrics.Port)
 	}
 
+	// Embedding defaults.
+	if c.Embedding != nil {
+		if c.Embedding.Model == "" {
+			c.Embedding.Model = "openai/text-embedding-3-small"
+		}
+
+		if c.Embedding.APIURL == "" {
+			c.Embedding.APIURL = "https://openrouter.ai/api/v1"
+		}
+
+		if c.Embedding.Cache.Backend == "" {
+			c.Embedding.Cache.Backend = "memory"
+		}
+	}
+
 	// ClickHouse defaults.
 	for i := range c.ClickHouse {
 		if c.ClickHouse[i].Port == 0 {
@@ -286,6 +328,17 @@ func (c *ServerConfig) Validate() error {
 
 		if strings.TrimSpace(c.Auth.ClientID) == "" {
 			return fmt.Errorf("auth.client_id is required when auth.mode is 'oidc'")
+		}
+	}
+
+	// Validate embedding config.
+	if c.Embedding != nil {
+		if c.Embedding.APIKey == "" {
+			return fmt.Errorf("embedding.api_key is required when embedding is configured")
+		}
+
+		if c.Embedding.Cache.Backend == "redis" && c.Embedding.Cache.RedisURL == "" {
+			return fmt.Errorf("embedding.cache.redis_url is required when cache backend is 'redis'")
 		}
 	}
 
