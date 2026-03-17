@@ -85,14 +85,22 @@ func showTable(ctx context.Context, tableName string) error {
 	}
 
 	schema := response.Table
-	fmt.Printf("Table: %s  (cluster: %s)\n", schema.Name, response.Cluster)
+
+	clusterNames := make([]string, 0, len(response.Clusters))
+	for _, c := range response.Clusters {
+		clusterNames = append(clusterNames, c.Name)
+	}
+
+	fmt.Printf("Table: %s  (clusters: %s)\n", schema.Name, strings.Join(clusterNames, ", "))
 
 	if schema.Comment != "" {
 		fmt.Printf("Comment: %s\n", schema.Comment)
 	}
 
-	if len(schema.Networks) > 0 {
-		fmt.Printf("Networks: %s\n", strings.Join(schema.Networks, ", "))
+	for _, c := range response.Clusters {
+		if len(c.Networks) > 0 {
+			fmt.Printf("Networks (%s): %s\n", c.Name, strings.Join(c.Networks, ", "))
+		}
 	}
 
 	fmt.Println()
