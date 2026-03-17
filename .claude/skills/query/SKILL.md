@@ -17,9 +17,9 @@ Query Ethereum network data through the ethpandaops tools. Execute Python code i
 
 ## Access Methods
 
-This skill works with **either** the CLI (`panda`) or the MCP server. Use whichever is available.
+This skill works with **either** the CLI (`panda` binary) or the MCP server. **Prefer the CLI** — it is always available. Only use the MCP tools (`execute_python`, `manage_session`, `search`) if they appear in your available tools list. If they do not, use the CLI equivalents below via the Bash tool.
 
-### CLI (`panda` binary)
+### CLI (`panda` binary) — primary interface
 
 ```bash
 # Discovery

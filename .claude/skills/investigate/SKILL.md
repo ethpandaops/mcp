@@ -7,27 +7,63 @@ user-invocable: false
 
 # Investigate Ethereum Network Issues
 
-Systematic debugging of Ethereum devnets and testnets using the `panda` CLI. Covers finality delays, network splits, offline nodes, and client bugs.
+Systematic debugging of Ethereum devnets and testnets. Covers finality delays, network splits, offline nodes, and client bugs.
 
-## Prerequisites
+**The user MUST specify which network to debug.** If not provided, ask them.
 
-The `panda` CLI must be built and configured:
-```bash
-make build-cli && make download-models
-LD_LIBRARY_PATH=./models ./panda datasources  # verify connectivity
-```
+## Step 0: Local or Remote?
 
-## Phase 0: Discovery
-
-**The user MUST specify which network to debug.** If not provided, help them find one:
+First, determine whether this is a **local Kurtosis devnet** or a **remote hosted deployment**. Check both:
 
 ```bash
-# Find available networks
-panda execute --code 'from ethpandaops import dora; print(dora.list_networks())'
-panda execute --code 'from ethpandaops import loki; print(loki.get_label_values("ethpandaops", "testnet"))'
+# Check for local Kurtosis enclaves
+kurtosis enclave ls 2>/dev/null
+
+# Check for remote datasources via panda
+panda datasources --json 2>/dev/null
 ```
 
-Determine the **data profile** — which datasources have the target network:
+**Routing:**
+- If the target network matches a **Kurtosis enclave name** → this is a **local devnet**. Use `panda search runbooks "debug local devnet"` to load the local debugging runbook, then follow that procedure. It covers Kurtosis service discovery, local Dora/Loki detection (localhost:3100), direct CL/EL API queries, and the Kurtosis-specific Loki label schema (`job="kurtosis"`, `kurtosis_service_name`, etc.).
+- If the target network is found in **panda datasources** (Dora networks, Loki instances) → this is a **remote deployment**. Continue with Phase 0 below.
+- If found in **neither** → stop, tell the user the network was not found in any local enclave or remote datasource.
+
+## Phase 0: Remote Discovery
+
+**Step 1: Discover all available datasources.** Do not assume instance names — they vary between deployments.
+
+```bash
+panda datasources --json
+```
+
+This returns all configured datasources with their names and types. Note the Loki and Dora instance names for use in later phases.
+
+**Step 2: Find which networks are available across datasources:**
+
+```bash
+panda execute --code '
+from ethpandaops import dora, loki
+
+# Discover Dora networks
+try:
+    networks = dora.list_networks()
+    print("Dora networks:", [n["name"] for n in networks])
+except Exception as e:
+    print(f"Dora unavailable: {e}")
+
+# Discover Loki networks across ALL instances
+loki_instances = loki.list_datasources()
+print(f"Loki instances: {[d["name"] for d in loki_instances]}")
+for ds in loki_instances:
+    try:
+        testnets = loki.get_label_values(ds["name"], "testnet")
+        print(f"  {ds[\"name\"]} networks: {testnets}")
+    except Exception as e:
+        print(f"  {ds[\"name\"]} error: {e}")
+'
+```
+
+**Step 3: Determine the data profile** for the target network. Use the actual instance names discovered above:
 
 ```bash
 panda execute --code '
@@ -42,16 +78,23 @@ try:
 except Exception:
     has_dora = False
 
-# Check Loki
-try:
-    testnets = loki.get_label_values("ethpandaops", "testnet")
-    has_loki = network in testnets
-except Exception:
-    has_loki = False
+# Check Loki — search ALL instances, not just "ethpandaops"
+loki_instance = None
+for ds in loki.list_datasources():
+    try:
+        testnets = loki.get_label_values(ds["name"], "testnet")
+        if network in testnets:
+            loki_instance = ds["name"]
+            break
+    except Exception:
+        pass
 
-print(f"has_dora={has_dora}, has_loki={has_loki}")
+has_loki = loki_instance is not None
+print(f"has_dora={has_dora}, has_loki={has_loki}, loki_instance={loki_instance}")
 '
 ```
+
+Use the discovered `loki_instance` name in all subsequent Loki calls (Phases 2+). Do NOT hardcode `"ethpandaops"`.
 
 **Routing:**
 - Neither datasource has the network → stop, tell the user
@@ -104,7 +147,7 @@ If multiple forks detected, the split overrides the investigation timeframe — 
 
 ## Phase 2: Log Investigation (Loki)
 
-Target specific nodes from Phase 1 findings, or scan broadly if Loki-only.
+Target specific nodes from Phase 1 findings, or scan broadly if Loki-only. **Use the `loki_instance` name discovered in Phase 0** — do not hardcode `"ethpandaops"`.
 
 ```bash
 # Discover available labels for the network
@@ -112,8 +155,9 @@ panda execute --session <id> --code '
 from ethpandaops import loki
 
 network = "<NETWORK>"
-instances = loki.get_label_values("ethpandaops", "instance", f'\''{{testnet="{network}"}}'\'')
-cl_clients = loki.get_label_values("ethpandaops", "ethereum_cl", f'\''{{testnet="{network}"}}'\'')
+loki_instance = "<LOKI_INSTANCE>"  # from Phase 0 discovery
+instances = loki.get_label_values(loki_instance, "instance", f'\''{{testnet="{network}"}}'\'')
+cl_clients = loki.get_label_values(loki_instance, "ethereum_cl", f'\''{{testnet="{network}"}}'\'')
 print(f"Instances: {instances}")
 print(f"CL clients: {cl_clients}")
 '
@@ -122,8 +166,9 @@ print(f"CL clients: {cl_clients}")
 panda execute --session <id> --code '
 from ethpandaops import loki
 
+loki_instance = "<LOKI_INSTANCE>"  # from Phase 0 discovery
 logs = loki.query(
-    "ethpandaops",
+    loki_instance,
     '\''{{testnet="<NETWORK>", instance="<INSTANCE>"}} |~ "(?i)(CRIT|ERR)"'\'',
     start="now-1h",
     limit=100
