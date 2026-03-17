@@ -1,6 +1,9 @@
 package resource
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -11,18 +14,56 @@ import (
 	"github.com/ethpandaops/panda/pkg/types"
 )
 
+// stubEmbedder returns deterministic vectors based on text hash.
+type stubEmbedder struct {
+	dim int
+}
+
+var _ embedding.Embedder = (*stubEmbedder)(nil)
+
+func (s *stubEmbedder) Embed(text string) ([]float32, error) {
+	h := sha256.Sum256([]byte(text))
+	vec := make([]float32, s.dim)
+
+	for i := range vec {
+		bits := binary.LittleEndian.Uint32(h[((i * 4) % len(h)):])
+		vec[i] = float32(bits) / float32(math.MaxUint32)
+	}
+
+	// L2-normalize.
+	var norm float64
+	for _, v := range vec {
+		norm += float64(v) * float64(v)
+	}
+
+	norm = math.Sqrt(norm)
+	for i := range vec {
+		vec[i] = float32(float64(vec[i]) / norm)
+	}
+
+	return vec, nil
+}
+
+func (s *stubEmbedder) EmbedBatch(texts []string) ([][]float32, error) {
+	vecs := make([][]float32, len(texts))
+	for i, t := range texts {
+		v, err := s.Embed(t)
+		if err != nil {
+			return nil, err
+		}
+
+		vecs[i] = v
+	}
+
+	return vecs, nil
+}
+
+func (s *stubEmbedder) Close() error { return nil }
+
 func TestEIPSearchVectorReuse(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
+	t.Parallel()
 
-	modelPath := "../../models/all-MiniLM-L6-v2"
-	embedder, err := embedding.NewLocal(modelPath)
-	if err != nil {
-		t.Skipf("embedding model not available at %s: %v", modelPath, err)
-	}
-	defer func() { _ = embedder.Close() }()
-
+	embedder := &stubEmbedder{dim: 8}
 	log := logrus.New()
 
 	eips := []types.EIP{
