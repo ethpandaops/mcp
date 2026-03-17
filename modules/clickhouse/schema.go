@@ -84,6 +84,12 @@ type ClusterTables struct {
 	LastUpdated time.Time               `json:"last_updated"`
 }
 
+// TableMatch pairs a table schema with the cluster it was found in.
+type TableMatch struct {
+	Schema      *TableSchema
+	ClusterName string
+}
+
 // ClickHouseSchemaClient fetches and caches ClickHouse schema information.
 type ClickHouseSchemaClient interface {
 	// Start initializes the client and fetches initial schema data.
@@ -94,8 +100,9 @@ type ClickHouseSchemaClient interface {
 	WaitForReady(ctx context.Context) error
 	// GetAllTables returns all tables across all clusters.
 	GetAllTables() map[string]*ClusterTables
-	// GetTable returns schema for a specific table (searches all clusters).
-	GetTable(tableName string) (*TableSchema, string, bool)
+	// GetTableAll returns schema for a table from every cluster that contains it.
+	// Falls back to case-insensitive matching when no exact match is found.
+	GetTableAll(tableName string) []TableMatch
 }
 
 // Compile-time interface compliance check.
@@ -272,18 +279,40 @@ func (c *clickhouseSchemaClient) GetAllTables() map[string]*ClusterTables {
 	return result
 }
 
-// GetTable returns schema for a specific table (searches all clusters).
-func (c *clickhouseSchemaClient) GetTable(tableName string) (*TableSchema, string, bool) {
+// GetTableAll returns schema for a table from every cluster that contains it.
+// Falls back to case-insensitive matching when no exact match is found.
+func (c *clickhouseSchemaClient) GetTableAll(tableName string) []TableMatch {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	var matches []TableMatch
+
 	for clusterName, cluster := range c.clusters {
 		if schema, ok := cluster.Tables[tableName]; ok {
-			return schema, clusterName, true
+			matches = append(matches, TableMatch{
+				Schema:      schema,
+				ClusterName: clusterName,
+			})
 		}
 	}
 
-	return nil, "", false
+	if len(matches) > 0 {
+		return matches
+	}
+
+	// Fall back to case-insensitive matching.
+	for clusterName, cluster := range c.clusters {
+		for name, schema := range cluster.Tables {
+			if strings.EqualFold(name, tableName) {
+				matches = append(matches, TableMatch{
+					Schema:      schema,
+					ClusterName: clusterName,
+				})
+			}
+		}
+	}
+
+	return matches
 }
 
 // backgroundRefresh periodically refreshes the schema data.
@@ -642,16 +671,6 @@ func parseCreateTable(tableName, createStmt string) (*TableSchema, error) {
 		Columns:         make([]TableColumn, 0, 32),
 	}
 
-	// Extract engine.
-	if matches := enginePattern.FindStringSubmatch(createStmt); len(matches) > 1 {
-		schema.Engine = matches[1]
-	}
-
-	// Extract table comment.
-	if matches := tableCommentPattern.FindStringSubmatch(createStmt); len(matches) > 1 {
-		schema.Comment = matches[1]
-	}
-
 	// Extract columns from the CREATE TABLE statement.
 	// Find the content between the first ( and the matching ).
 	startIdx := strings.Index(createStmt, "(")
@@ -684,6 +703,18 @@ outerLoop:
 	}
 
 	columnsSection := createStmt[startIdx+1 : endIdx]
+
+	// Extract engine and table comment from the suffix after the column definitions.
+	// This avoids matching column-level COMMENT clauses inside the parentheses.
+	suffix := createStmt[endIdx:]
+
+	if matches := enginePattern.FindStringSubmatch(suffix); len(matches) > 1 {
+		schema.Engine = matches[1]
+	}
+
+	if matches := tableCommentPattern.FindStringSubmatch(suffix); len(matches) > 1 {
+		schema.Comment = matches[1]
+	}
 
 	// Parse each column definition.
 	// Column format: `name` Type [DEFAULT expr] [CODEC(...)] [COMMENT 'comment'].

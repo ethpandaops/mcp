@@ -37,10 +37,16 @@ type TableSummary struct {
 	HasNetworkCol bool   `json:"has_network_column"`
 }
 
+// ClusterNetworks pairs a cluster name with the networks available in it.
+type ClusterNetworks struct {
+	Name     string   `json:"name"`
+	Networks []string `json:"networks"`
+}
+
 // TableDetailResponse is the response for clickhouse://tables/{table_name}.
 type TableDetailResponse struct {
-	Table   *TableSchema `json:"table"`
-	Cluster string       `json:"cluster"`
+	Table    *TableSchema      `json:"table"`
+	Clusters []ClusterNetworks `json:"clusters"`
 }
 
 // RegisterSchemaResources registers ClickHouse schema resources with the registry.
@@ -135,44 +141,39 @@ func createTablesListHandler(client ClickHouseSchemaClient) types.ReadHandler {
 // createTableDetailHandler creates a handler for the clickhouse://tables/{table_name} resource.
 func createTableDetailHandler(log logrus.FieldLogger, client ClickHouseSchemaClient) types.ReadHandler {
 	return func(_ context.Context, uri string) (string, error) {
-		// Extract table name from URI
 		tableName := extractTableName(uri)
 		if tableName == "" {
 			return "", fmt.Errorf("invalid table URI: %s", uri)
 		}
 
-		schema, clusterName, found := client.GetTable(tableName)
-		if !found {
-			// Try to find a partial match (case-insensitive)
-			allTables := client.GetAllTables()
+		matches := client.GetTableAll(tableName)
 
-			for cluster, clusterTables := range allTables {
-				for name, tableSchema := range clusterTables.Tables {
-					if strings.EqualFold(name, tableName) {
-						schema = tableSchema
-						clusterName = cluster
-						found = true
-
-						break
-					}
-				}
-
-				if found {
-					break
-				}
-			}
-		}
-
-		if !found {
-			// List available tables in error message
+		if len(matches) == 0 {
 			availableTables := listAvailableTables(client)
 
 			return "", fmt.Errorf("table %q not found. Available tables: %s", tableName, strings.Join(availableTables, ", "))
 		}
 
+		// Use the first match as the base schema; strip networks since they're per-cluster.
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].ClusterName < matches[j].ClusterName
+		})
+
+		base := *matches[0].Schema
+		base.Networks = nil
+
+		clusters := make([]ClusterNetworks, 0, len(matches))
+
+		for _, m := range matches {
+			clusters = append(clusters, ClusterNetworks{
+				Name:     m.ClusterName,
+				Networks: m.Schema.Networks,
+			})
+		}
+
 		response := &TableDetailResponse{
-			Table:   schema,
-			Cluster: clusterName,
+			Table:    &base,
+			Clusters: clusters,
 		}
 
 		data, err := json.MarshalIndent(response, "", "  ")
@@ -180,9 +181,14 @@ func createTableDetailHandler(log logrus.FieldLogger, client ClickHouseSchemaCli
 			return "", fmt.Errorf("marshaling table detail: %w", err)
 		}
 
+		clusterNames := make([]string, 0, len(clusters))
+		for _, c := range clusters {
+			clusterNames = append(clusterNames, c.Name)
+		}
+
 		log.WithFields(logrus.Fields{
-			"table":   tableName,
-			"cluster": clusterName,
+			"table":    tableName,
+			"clusters": clusterNames,
 		}).Debug("Returned table schema")
 
 		return string(data), nil
