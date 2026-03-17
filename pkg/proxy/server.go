@@ -58,6 +58,7 @@ type server struct {
 	prometheusHandler *handlers.PrometheusHandler
 	lokiHandler       *handlers.LokiHandler
 	ethNodeHandler    *handlers.EthNodeHandler
+	embeddingService  *EmbeddingService
 
 	mu      sync.RWMutex
 	started bool
@@ -156,6 +157,22 @@ func newServer(log logrus.FieldLogger, cfg ServerConfig, hostURL, port string) (
 		s.ethNodeHandler = handlers.NewEthNodeHandler(log, *ethNodeConfig)
 	}
 
+	// Create embedding service if configured.
+	if cfg.Embedding != nil {
+		embCache, err := buildEmbeddingCache(cfg.Embedding.Cache)
+		if err != nil {
+			return nil, fmt.Errorf("creating embedding cache: %w", err)
+		}
+
+		s.embeddingService = NewEmbeddingService(
+			log,
+			embCache,
+			cfg.Embedding.APIKey,
+			cfg.Embedding.Model,
+			cfg.Embedding.APIURL,
+		)
+	}
+
 	if s.url == "" {
 		s.url = fmt.Sprintf("http://localhost:%s", port)
 	}
@@ -204,6 +221,10 @@ func (s *server) registerRoutes() {
 	}
 
 	s.mux.Handle("/datasources", s.metricsMiddleware(chain(http.HandlerFunc(s.handleDatasources))))
+
+	if s.embeddingService != nil {
+		s.mux.Method(http.MethodPost, "/embed", s.metricsMiddleware(chain(http.HandlerFunc(s.handleEmbed))))
+	}
 
 	// Authenticated routes.
 	if s.clickhouseHandler != nil {
@@ -262,26 +283,30 @@ func (s *server) buildMiddlewareChain() func(http.Handler) http.Handler {
 // DatasourcesResponse is the response from the /datasources endpoint.
 // This is used by the MCP server client to discover available datasources.
 type DatasourcesResponse struct {
-	ClickHouse       []string               `json:"clickhouse,omitempty"`
-	Prometheus       []string               `json:"prometheus,omitempty"`
-	Loki             []string               `json:"loki,omitempty"`
-	ClickHouseInfo   []types.DatasourceInfo `json:"clickhouse_info,omitempty"`
-	PrometheusInfo   []types.DatasourceInfo `json:"prometheus_info,omitempty"`
-	LokiInfo         []types.DatasourceInfo `json:"loki_info,omitempty"`
-	EthNodeAvailable bool                   `json:"ethnode_available,omitempty"`
+	ClickHouse         []string               `json:"clickhouse,omitempty"`
+	Prometheus         []string               `json:"prometheus,omitempty"`
+	Loki               []string               `json:"loki,omitempty"`
+	ClickHouseInfo     []types.DatasourceInfo `json:"clickhouse_info,omitempty"`
+	PrometheusInfo     []types.DatasourceInfo `json:"prometheus_info,omitempty"`
+	LokiInfo           []types.DatasourceInfo `json:"loki_info,omitempty"`
+	EthNodeAvailable   bool                   `json:"ethnode_available,omitempty"`
+	EmbeddingAvailable bool                   `json:"embedding_available,omitempty"`
+	EmbeddingModel     string                 `json:"embedding_model,omitempty"`
 }
 
 // handleDatasources returns the list of available datasources,
 // filtered by the authenticated user's org membership.
 func (s *server) handleDatasources(w http.ResponseWriter, r *http.Request) {
 	info := DatasourcesResponse{
-		ClickHouse:       s.ClickHouseDatasources(),
-		Prometheus:       s.PrometheusDatasources(),
-		Loki:             s.LokiDatasources(),
-		ClickHouseInfo:   s.ClickHouseDatasourceInfo(),
-		PrometheusInfo:   s.PrometheusDatasourceInfo(),
-		LokiInfo:         s.LokiDatasourceInfo(),
-		EthNodeAvailable: s.EthNodeAvailable(),
+		ClickHouse:         s.ClickHouseDatasources(),
+		Prometheus:         s.PrometheusDatasources(),
+		Loki:               s.LokiDatasources(),
+		ClickHouseInfo:     s.ClickHouseDatasourceInfo(),
+		PrometheusInfo:     s.PrometheusDatasourceInfo(),
+		LokiInfo:           s.LokiDatasourceInfo(),
+		EthNodeAvailable:   s.EthNodeAvailable(),
+		EmbeddingAvailable: s.EmbeddingAvailable(),
+		EmbeddingModel:     s.EmbeddingModel(),
 	}
 
 	if s.authorizer != nil {
@@ -293,6 +318,31 @@ func (s *server) handleDatasources(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(info); err != nil {
 		s.log.WithError(err).Error("Failed to encode datasources response")
+	}
+}
+
+// handleEmbed handles embedding requests by delegating to the embedding service.
+func (s *server) handleEmbed(w http.ResponseWriter, r *http.Request) {
+	var req EmbedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+
+		return
+	}
+
+	resp, err := s.embeddingService.Embed(r.Context(), req.Items)
+	if err != nil {
+		s.log.WithError(err).Error("Embedding request failed")
+		http.Error(w, fmt.Sprintf("embedding failed: %v", err), http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		s.log.WithError(err).Error("Failed to encode embedding response")
 	}
 }
 
@@ -400,6 +450,13 @@ func (s *server) Stop(ctx context.Context) error {
 	// Stop rate limiter.
 	if s.rateLimiter != nil {
 		s.rateLimiter.Stop()
+	}
+
+	// Close embedding service.
+	if s.embeddingService != nil {
+		if err := s.embeddingService.Close(); err != nil {
+			s.log.WithError(err).Warn("Error closing embedding service")
+		}
 	}
 
 	// Shutdown HTTP server.
@@ -529,6 +586,20 @@ func (s *server) LokiDatasourceInfo() []types.DatasourceInfo {
 // EthNodeAvailable returns true if the ethnode handler is configured.
 func (s *server) EthNodeAvailable() bool {
 	return s.ethNodeHandler != nil
+}
+
+// EmbeddingAvailable returns true if the embedding service is configured.
+func (s *server) EmbeddingAvailable() bool {
+	return s.embeddingService != nil
+}
+
+// EmbeddingModel returns the configured embedding model name.
+func (s *server) EmbeddingModel() string {
+	if s.embeddingService == nil {
+		return ""
+	}
+
+	return s.embeddingService.Model()
 }
 
 func advertisedURLs(listenAddr string) (string, string) {

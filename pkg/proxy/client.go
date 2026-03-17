@@ -55,6 +55,11 @@ type Client interface {
 	// EthNodeAvailable returns true if the proxy has ethnode credentials configured.
 	EthNodeAvailable() bool
 
+	// EmbeddingAvailable returns true if the proxy has embedding configured.
+	EmbeddingAvailable() bool
+	// EmbeddingModel returns the configured embedding model name.
+	EmbeddingModel() string
+
 	// Discover fetches datasource information from the proxy.
 	Discover(ctx context.Context) error
 
@@ -363,6 +368,22 @@ func (c *proxyClient) EthNodeAvailable() bool {
 	defer c.mu.RUnlock()
 
 	return c.datasources.EthNodeAvailable
+}
+
+// EmbeddingAvailable returns true if the proxy has embedding configured.
+func (c *proxyClient) EmbeddingAvailable() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.datasources.EmbeddingAvailable
+}
+
+// EmbeddingModel returns the configured embedding model name.
+func (c *proxyClient) EmbeddingModel() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.datasources.EmbeddingModel
 }
 
 // Discover fetches datasource information from the proxy's /datasources endpoint.

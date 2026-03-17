@@ -28,7 +28,7 @@ type indexedExample struct {
 
 // ExampleIndex provides semantic search over query examples.
 type ExampleIndex struct {
-	embedder *embedding.Embedder
+	embedder embedding.Embedder
 	examples []indexedExample
 }
 
@@ -36,7 +36,7 @@ type ExampleIndex struct {
 // from query examples.
 func NewExampleIndex(
 	log logrus.FieldLogger,
-	embedder *embedding.Embedder,
+	embedder embedding.Embedder,
 	categories map[string]types.ExampleCategory,
 ) (*ExampleIndex, error) {
 	log = log.WithField("component", "example_index")

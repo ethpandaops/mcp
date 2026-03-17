@@ -62,7 +62,7 @@ func (b *Builder) Build(ctx context.Context) (Service, error) {
 		return nil, err
 	}
 
-	searchRuntime, err := searchruntime.Build(ctx, b.log, b.cfg.SemanticSearch, application.ModuleRegistry)
+	searchRuntime, err := searchruntime.Build(ctx, b.log, b.cfg.SemanticSearch, application.ModuleRegistry, application.ProxyClient)
 	if err != nil {
 		_ = application.Stop(ctx)
 		return nil, fmt.Errorf("building search runtime: %w", err)

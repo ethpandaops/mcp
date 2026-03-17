@@ -1,4 +1,4 @@
-// Package embedding provides text embedding capabilities using ONNX models via hugot.
+// Package embedding provides text embedding capabilities.
 package embedding
 
 import (
@@ -8,14 +8,29 @@ import (
 	"github.com/knights-analytics/hugot/pipelines"
 )
 
-// Embedder provides text embedding capabilities using hugot's pure Go ONNX backend.
-type Embedder struct {
+// Embedder provides text embedding capabilities.
+type Embedder interface {
+	// Embed returns the L2-normalized embedding vector for a single text string.
+	Embed(text string) ([]float32, error)
+
+	// EmbedBatch returns L2-normalized embedding vectors for multiple texts.
+	EmbedBatch(texts []string) ([][]float32, error)
+
+	// Close releases resources held by the embedder.
+	Close() error
+}
+
+// LocalEmbedder provides text embedding using hugot's pure Go ONNX backend.
+type LocalEmbedder struct {
 	session  *hugot.Session
 	pipeline *pipelines.FeatureExtractionPipeline
 }
 
-// New creates a new Embedder with the given ONNX model directory path.
-func New(modelPath string) (*Embedder, error) {
+// Compile-time interface check.
+var _ Embedder = (*LocalEmbedder)(nil)
+
+// NewLocal creates a new LocalEmbedder with the given ONNX model directory path.
+func NewLocal(modelPath string) (*LocalEmbedder, error) {
 	if modelPath == "" {
 		return nil, fmt.Errorf("model path is required")
 	}
@@ -40,11 +55,11 @@ func New(modelPath string) (*Embedder, error) {
 		return nil, fmt.Errorf("creating embedding pipeline from %s: %w", modelPath, err)
 	}
 
-	return &Embedder{session: session, pipeline: pipeline}, nil
+	return &LocalEmbedder{session: session, pipeline: pipeline}, nil
 }
 
 // Embed returns the L2-normalized embedding vector for a single text string.
-func (e *Embedder) Embed(text string) ([]float32, error) {
+func (e *LocalEmbedder) Embed(text string) ([]float32, error) {
 	result, err := e.pipeline.RunPipeline([]string{text})
 	if err != nil {
 		return nil, fmt.Errorf("embedding text: %w", err)
@@ -58,7 +73,7 @@ func (e *Embedder) Embed(text string) ([]float32, error) {
 }
 
 // EmbedBatch returns L2-normalized embedding vectors for multiple texts.
-func (e *Embedder) EmbedBatch(texts []string) ([][]float32, error) {
+func (e *LocalEmbedder) EmbedBatch(texts []string) ([][]float32, error) {
 	result, err := e.pipeline.RunPipeline(texts)
 	if err != nil {
 		return nil, fmt.Errorf("embedding batch: %w", err)
@@ -68,7 +83,7 @@ func (e *Embedder) EmbedBatch(texts []string) ([][]float32, error) {
 }
 
 // Close releases resources held by the embedder.
-func (e *Embedder) Close() error {
+func (e *LocalEmbedder) Close() error {
 	if e.session != nil {
 		return e.session.Destroy()
 	}

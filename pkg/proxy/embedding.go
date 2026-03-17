@@ -1,0 +1,285 @@
+package proxy
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/panda/pkg/cache"
+)
+
+const embeddingAPITimeout = 2 * time.Minute
+
+// EmbedRequest is the request payload for the /embed endpoint.
+type EmbedRequest struct {
+	Items []EmbedItem `json:"items"`
+}
+
+// EmbedItem is a single item to embed.
+type EmbedItem struct {
+	Hash string `json:"hash"`
+	Text string `json:"text"`
+}
+
+// EmbedResponse is the response payload from the /embed endpoint.
+type EmbedResponse struct {
+	Results []EmbedResult `json:"results"`
+	Model   string        `json:"model"`
+}
+
+// EmbedResult is a single embedding result.
+type EmbedResult struct {
+	Hash   string    `json:"hash"`
+	Vector []float32 `json:"vector"`
+}
+
+// EmbeddingService handles embedding requests using a remote API with caching.
+type EmbeddingService struct {
+	log    logrus.FieldLogger
+	cache  cache.Cache
+	apiKey string
+	model  string
+	apiURL string
+	client *http.Client
+}
+
+// NewEmbeddingService creates a new EmbeddingService.
+func NewEmbeddingService(
+	log logrus.FieldLogger,
+	c cache.Cache,
+	apiKey, model, apiURL string,
+) *EmbeddingService {
+	return &EmbeddingService{
+		log:    log.WithField("component", "embedding-service"),
+		cache:  c,
+		apiKey: apiKey,
+		model:  model,
+		apiURL: strings.TrimRight(apiURL, "/"),
+		client: &http.Client{Timeout: embeddingAPITimeout},
+	}
+}
+
+// Model returns the configured embedding model name.
+func (s *EmbeddingService) Model() string {
+	return s.model
+}
+
+// Embed computes embeddings for the given items, using the cache where possible.
+func (s *EmbeddingService) Embed(ctx context.Context, items []EmbedItem) (*EmbedResponse, error) {
+	if len(items) == 0 {
+		return &EmbedResponse{Model: s.model}, nil
+	}
+
+	// Build cache keys: {model}:{hash}.
+	cacheKeys := make([]string, len(items))
+
+	for i, item := range items {
+		cacheKeys[i] = s.model + ":" + item.Hash
+	}
+
+	// Check cache for existing vectors.
+	cached, err := s.cache.GetMulti(ctx, cacheKeys)
+	if err != nil {
+		s.log.WithError(err).Warn("Cache GetMulti failed, will embed all items")
+
+		cached = nil
+	}
+
+	// Separate hits from misses.
+	results := make([]EmbedResult, len(items))
+	var misses []int
+
+	for i, item := range items {
+		key := cacheKeys[i]
+		if data, ok := cached[key]; ok {
+			var vec []float32
+			if err := json.Unmarshal(data, &vec); err != nil {
+				s.log.WithError(err).WithField("key", key).Warn("Cache deserialization failed, will re-embed")
+
+				misses = append(misses, i)
+
+				continue
+			}
+
+			results[i] = EmbedResult{Hash: item.Hash, Vector: vec}
+
+			continue
+		}
+
+		misses = append(misses, i)
+	}
+
+	if len(misses) > 0 {
+		s.log.WithFields(logrus.Fields{
+			"total":        len(items),
+			"cache_hits":   len(items) - len(misses),
+			"cache_misses": len(misses),
+		}).Debug("Embedding cache stats")
+
+		// Collect texts for the misses.
+		missTexts := make([]string, len(misses))
+		for j, idx := range misses {
+			missTexts[j] = items[idx].Text
+		}
+
+		// Call OpenRouter API.
+		vectors, err := s.callEmbeddingAPI(ctx, missTexts)
+		if err != nil {
+			return nil, fmt.Errorf("calling embedding API: %w", err)
+		}
+
+		if len(vectors) != len(misses) {
+			return nil, fmt.Errorf(
+				"embedding API returned %d vectors, expected %d",
+				len(vectors), len(misses),
+			)
+		}
+
+		// L2-normalize and store results + cache entries.
+		toCache := make(map[string][]byte, len(misses))
+
+		for j, idx := range misses {
+			vec := l2Normalize(vectors[j])
+			results[idx] = EmbedResult{Hash: items[idx].Hash, Vector: vec}
+
+			data, err := json.Marshal(vec)
+			if err != nil {
+				s.log.WithError(err).Warn("Failed to marshal vector for cache")
+
+				continue
+			}
+
+			toCache[cacheKeys[idx]] = data
+		}
+
+		if len(toCache) > 0 {
+			if err := s.cache.SetMulti(ctx, toCache); err != nil {
+				s.log.WithError(err).Warn("Cache SetMulti failed")
+			}
+		}
+	}
+
+	return &EmbedResponse{
+		Results: results,
+		Model:   s.model,
+	}, nil
+}
+
+// Close releases resources held by the embedding service.
+func (s *EmbeddingService) Close() error {
+	return s.cache.Close()
+}
+
+// openRouterRequest is the request body for the OpenRouter embeddings API.
+type openRouterRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
+}
+
+// openRouterResponse is the response body from the OpenRouter embeddings API.
+type openRouterResponse struct {
+	Data []openRouterEmbedding `json:"data"`
+}
+
+// openRouterEmbedding is a single embedding in the OpenRouter response.
+type openRouterEmbedding struct {
+	Index     int       `json:"index"`
+	Embedding []float32 `json:"embedding"`
+}
+
+func (s *EmbeddingService) callEmbeddingAPI(ctx context.Context, texts []string) ([][]float32, error) {
+	reqBody := openRouterRequest{
+		Model: s.model,
+		Input: texts,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling request: %w", err)
+	}
+
+	url := s.apiURL + "/embeddings"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+
+		return nil, fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var apiResp openRouterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	// Sort by index to maintain input order.
+	vectors := make([][]float32, len(texts))
+	for _, emb := range apiResp.Data {
+		if emb.Index < 0 || emb.Index >= len(vectors) {
+			return nil, fmt.Errorf("embedding API returned invalid index %d", emb.Index)
+		}
+
+		vectors[emb.Index] = emb.Embedding
+	}
+
+	for i, v := range vectors {
+		if v == nil {
+			return nil, fmt.Errorf("embedding API missing vector for index %d", i)
+		}
+	}
+
+	return vectors, nil
+}
+
+// buildEmbeddingCache creates a cache instance based on the config.
+func buildEmbeddingCache(cfg EmbeddingCacheConfig) (cache.Cache, error) {
+	switch cfg.Backend {
+	case "redis":
+		return cache.NewRedis(cfg.RedisURL, "panda:embed:")
+	case "memory", "":
+		return cache.NewInMemory(), nil
+	default:
+		return nil, fmt.Errorf("unsupported cache backend: %s", cfg.Backend)
+	}
+}
+
+// l2Normalize normalizes a vector to unit length.
+func l2Normalize(vec []float32) []float32 {
+	var norm float64
+	for _, v := range vec {
+		norm += float64(v) * float64(v)
+	}
+
+	norm = math.Sqrt(norm)
+	if norm == 0 {
+		return vec
+	}
+
+	result := make([]float32, len(vec))
+	for i, v := range vec {
+		result[i] = float32(float64(v) / norm)
+	}
+
+	return result
+}

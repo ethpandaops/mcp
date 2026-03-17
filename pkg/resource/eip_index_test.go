@@ -17,7 +17,7 @@ func TestEIPSearchVectorReuse(t *testing.T) {
 	}
 
 	modelPath := "../../models/all-MiniLM-L6-v2"
-	embedder, err := embedding.New(modelPath)
+	embedder, err := embedding.NewLocal(modelPath)
 	if err != nil {
 		t.Skipf("embedding model not available at %s: %v", modelPath, err)
 	}

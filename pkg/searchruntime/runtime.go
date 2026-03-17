@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/panda/pkg/eips"
 	"github.com/ethpandaops/panda/pkg/embedding"
 	"github.com/ethpandaops/panda/pkg/module"
+	"github.com/ethpandaops/panda/pkg/proxy"
 	"github.com/ethpandaops/panda/pkg/resource"
 	"github.com/ethpandaops/panda/runbooks"
 )
@@ -24,28 +25,21 @@ type Runtime struct {
 	RunbookIndex    *resource.RunbookIndex
 	EIPRegistry     *eips.Registry
 	EIPIndex        *resource.EIPIndex
-	embedder        *embedding.Embedder
+	embedder        embedding.Embedder
 }
 
 // Build creates a new search runtime with example, runbook, and EIP indices.
+// If proxyService is non-nil and has embedding available, a remote embedder is used.
+// Otherwise, it falls back to the local ONNX model.
 func Build(
 	ctx context.Context,
 	log logrus.FieldLogger,
 	cfg config.SemanticSearchConfig,
 	moduleRegistry *module.Registry,
+	proxyService proxy.Service,
 ) (*Runtime, error) {
-	modelPath, searched := resolveModelPath(cfg.ModelPath)
-	if modelPath == "" {
-		log.WithField("searched", strings.Join(searched, ", ")).
-			Warn("Embedding model not found — semantic search disabled. Run 'make download-models' to enable it.")
-
-		return nil, nil
-	}
-
-	embedder, err := embedding.New(modelPath)
-	if err != nil {
-		log.WithError(err).Warn("Failed to initialize embedder — semantic search disabled")
-
+	embedder := selectEmbedder(log, cfg, proxyService)
+	if embedder == nil {
 		return nil, nil
 	}
 
@@ -128,6 +122,45 @@ func (r *Runtime) Close() error {
 	}
 
 	return nil
+}
+
+// selectEmbedder picks the best available embedder: remote via proxy, or local ONNX.
+func selectEmbedder(
+	log logrus.FieldLogger,
+	cfg config.SemanticSearchConfig,
+	proxyService proxy.Service,
+) embedding.Embedder {
+	// Prefer remote embedder when the proxy has embedding configured.
+	if proxyService != nil && proxyService.EmbeddingAvailable() {
+		log.WithField("model", proxyService.EmbeddingModel()).
+			Info("Using remote embedder via proxy")
+
+		return embedding.NewRemote(
+			log,
+			proxyService.URL(),
+			func() string { return proxyService.RegisterToken("embedding") },
+		)
+	}
+
+	// Fall back to local ONNX model.
+	modelPath, searched := resolveModelPath(cfg.ModelPath)
+	if modelPath == "" {
+		log.WithField("searched", strings.Join(searched, ", ")).
+			Warn("Embedding model not found — semantic search disabled. Run 'make download-models' to enable it.")
+
+		return nil
+	}
+
+	localEmbedder, err := embedding.NewLocal(modelPath)
+	if err != nil {
+		log.WithError(err).Warn("Failed to initialize embedder — semantic search disabled")
+
+		return nil
+	}
+
+	log.WithField("model_path", modelPath).Info("Using local ONNX embedder")
+
+	return localEmbedder
 }
 
 func resolveModelPath(configuredPath string) (string, []string) {
