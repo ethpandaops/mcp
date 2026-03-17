@@ -61,7 +61,7 @@ func TestEmbeddingService_Embed_CacheMiss(t *testing.T) {
 	mockAPI := newMockOpenRouterServer(t, &apiCalls)
 
 	memCache := cache.NewInMemory(0)
-	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0)
+	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0.01)
 
 	items := []EmbedItem{
 		{Hash: "aaa", Text: "hello"},
@@ -111,7 +111,7 @@ func TestEmbeddingService_Embed_CacheHit(t *testing.T) {
 		testModel + ":bbb": vecData,
 	}))
 
-	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0)
+	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0.01)
 
 	items := []EmbedItem{
 		{Hash: "aaa", Text: "hello"},
@@ -146,7 +146,7 @@ func TestEmbeddingService_Embed_PartialCacheHit(t *testing.T) {
 
 	require.NoError(t, memCache.Set(context.Background(), testModel+":aaa", vecData))
 
-	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0)
+	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0.01)
 
 	items := []EmbedItem{
 		{Hash: "aaa", Text: "hello"},
@@ -178,7 +178,7 @@ func TestEmbeddingService_Embed_Empty(t *testing.T) {
 	mockAPI := newMockOpenRouterServer(t, &apiCalls)
 
 	memCache := cache.NewInMemory(0)
-	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0)
+	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0.01)
 
 	resp, err := svc.Embed(context.Background(), []EmbedItem{})
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestEmbeddingService_Embed_L2Normalized(t *testing.T) {
 	mockAPI := newMockOpenRouterServer(t, &apiCalls)
 
 	memCache := cache.NewInMemory(0)
-	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0)
+	svc := NewEmbeddingService(logrus.New(), memCache, "test-api-key", testModel, mockAPI.URL+"/v1", 0.01)
 
 	items := []EmbedItem{
 		{Hash: "aaa", Text: "test normalization"},

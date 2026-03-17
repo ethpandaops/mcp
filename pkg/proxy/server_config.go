@@ -195,7 +195,7 @@ type EmbeddingConfig struct {
 	APIURL string `yaml:"api_url,omitempty"`
 
 	// CostPerToken is the USD cost per token for estimating embedding spend.
-	// Default: 0.00000002 ($0.02 per 1M tokens, matching text-embedding-3-small).
+	// If zero, the cost is fetched from the API's /models endpoint at startup.
 	CostPerToken float64 `yaml:"cost_per_token,omitempty"`
 
 	// Cache holds embedding cache configuration.
@@ -282,10 +282,6 @@ func (c *ServerConfig) ApplyDefaults() {
 
 		if c.Embedding.APIURL == "" {
 			c.Embedding.APIURL = "https://openrouter.ai/api/v1"
-		}
-
-		if c.Embedding.CostPerToken == 0 {
-			c.Embedding.CostPerToken = 0.00000002 // $0.02 per 1M tokens
 		}
 
 		if c.Embedding.Cache.Backend == "" {

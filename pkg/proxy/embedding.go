@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,19 +65,37 @@ type EmbeddingService struct {
 }
 
 // NewEmbeddingService creates a new EmbeddingService.
+// If costPerToken is 0, the service fetches pricing from the API's /models endpoint.
 func NewEmbeddingService(
 	log logrus.FieldLogger,
 	c cache.Cache,
 	apiKey, model, apiURL string,
 	costPerToken float64,
 ) *EmbeddingService {
+	svcLog := log.WithField("component", "embedding-service")
+	normalizedURL := strings.TrimRight(apiURL, "/")
+	httpClient := &http.Client{Timeout: embeddingAPITimeout}
+
+	if costPerToken == 0 {
+		fetched, err := fetchModelCostPerToken(httpClient, normalizedURL, model, apiKey)
+		if err != nil {
+			svcLog.WithError(err).Warn("Failed to fetch model pricing, cost metrics will be unavailable")
+		} else {
+			costPerToken = fetched
+			svcLog.WithFields(logrus.Fields{
+				"model":          model,
+				"cost_per_token": costPerToken,
+			}).Info("Fetched embedding model pricing")
+		}
+	}
+
 	return &EmbeddingService{
-		log:          log.WithField("component", "embedding-service"),
+		log:          svcLog,
 		cache:        c,
 		apiKey:       apiKey,
 		model:        model,
-		apiURL:       strings.TrimRight(apiURL, "/"),
-		client:       &http.Client{Timeout: embeddingAPITimeout},
+		apiURL:       normalizedURL,
+		client:       httpClient,
 		costPerToken: costPerToken,
 	}
 }
@@ -355,6 +374,74 @@ func buildEmbeddingCache(cfg EmbeddingCacheConfig) (cache.Cache, error) {
 	default:
 		return nil, fmt.Errorf("unsupported cache backend: %s", cfg.Backend)
 	}
+}
+
+// modelsResponse is the response from the OpenRouter /models endpoint.
+type modelsResponse struct {
+	Data []modelInfo `json:"data"`
+}
+
+// modelInfo represents a single model's metadata from the /models endpoint.
+type modelInfo struct {
+	ID      string       `json:"id"`
+	Pricing modelPricing `json:"pricing"`
+}
+
+// modelPricing contains per-token costs from the /models endpoint.
+type modelPricing struct {
+	Prompt string `json:"prompt"`
+}
+
+// fetchModelCostPerToken queries the API's /models endpoint and returns the
+// per-token prompt cost for the given model. Returns 0 if the model is not found.
+func fetchModelCostPerToken(client *http.Client, apiURL, model, apiKey string) (float64, error) {
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet,
+		apiURL+"/models", nil,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("creating models request: %w", err)
+	}
+
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("fetching models: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		return 0, fmt.Errorf("models endpoint returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var models modelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
+		return 0, fmt.Errorf("decoding models response: %w", err)
+	}
+
+	for _, m := range models.Data {
+		if m.ID != model {
+			continue
+		}
+
+		if m.Pricing.Prompt == "" {
+			return 0, nil
+		}
+
+		cost, err := strconv.ParseFloat(m.Pricing.Prompt, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parsing prompt cost %q: %w", m.Pricing.Prompt, err)
+		}
+
+		return cost, nil
+	}
+
+	return 0, nil
 }
 
 // l2Normalize normalizes a vector to unit length.
