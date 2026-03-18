@@ -263,6 +263,46 @@ def _extract_code_from_tool_calls(tool_calls: list[Any]) -> list[str]:
     return code_blocks
 
 
+async def _run_single_attempt(
+    question: str,
+    probe_id: str,
+    attempt_index: int,
+    persona: dict[str, str],
+    model: str,
+    mcp_url: str,
+) -> tuple[Any, Any]:
+    """Run a single persona attempt. Returns (AttemptResult, ExecutionResult|None)."""
+    from agent.wrapper import MCPAgent
+    from config.settings import EvalSettings
+    from probes.analysis import AttemptResult, extract_tables
+
+    settings = EvalSettings(model=model, mcp_url=mcp_url)
+    agent = MCPAgent(settings)
+    prompt = persona["prefix"] + question
+
+    result = None
+    try:
+        result = await agent.execute(prompt, test_id=f"probe-{probe_id}-{attempt_index + 1}")
+        tool_call_dicts = [
+            {"name": tc.name, "input": tc.input, "result": tc.result}
+            for tc in result.tool_calls
+        ]
+        tables = await extract_tables(tool_call_dicts)
+
+        attempt = AttemptResult(
+            tables=tables,
+            persona=persona["name"],
+            error=result.is_error,
+            error_message=result.error_message,
+            cost_usd=result.total_cost_usd or 0.0,
+            duration_ms=result.duration_ms,
+        )
+    except Exception as e:
+        attempt = AttemptResult(persona=persona["name"], error=True, error_message=str(e))
+
+    return attempt, result
+
+
 async def run_probe(
     case: dict[str, Any],
     attempts: int,
@@ -270,60 +310,35 @@ async def run_probe(
     mcp_url: str,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Run a single probe: N independent attempts at the same question."""
-    from agent.wrapper import MCPAgent
-    from config.settings import EvalSettings
-    from probes.analysis import AttemptResult, extract_tables, score_agreement
+    """Run a single probe: N independent attempts at the same question, concurrently."""
+    from probes.analysis import score_agreement
 
     question = case["question"]
     probe_id = case["id"]
-    attempt_results: list[AttemptResult] = []
 
-    for i in range(attempts):
-        persona = PERSONAS[i % len(PERSONAS)]
+    personas_to_run = [PERSONAS[i % len(PERSONAS)] for i in range(attempts)]
+    persona_names = ", ".join(p["name"] for p in personas_to_run)
+    console.print(f"  [dim]Running {attempts} personas concurrently: {persona_names}[/dim]")
+
+    tasks = [
+        _run_single_attempt(question, probe_id, i, persona, model, mcp_url)
+        for i, persona in enumerate(personas_to_run)
+    ]
+    results_pairs = await asyncio.gather(*tasks)
+
+    # Print results after all complete
+    for i, (attempt, result) in enumerate(results_pairs):
+        persona = personas_to_run[i]
         console.print(f"  [bold]Attempt {i + 1}/{attempts}[/bold] [dim]({persona['name']})[/dim]")
-
-        settings = EvalSettings(model=model, mcp_url=mcp_url)
-        agent = MCPAgent(settings)
-
-        prompt = persona["prefix"] + question
-
-        result = None
-        try:
-            result = await agent.execute(prompt, test_id=f"probe-{probe_id}-{i + 1}")
-            tool_call_dicts = [
-                {"name": tc.name, "input": tc.input, "result": tc.result}
-                for tc in result.tool_calls
-            ]
-            tables = await extract_tables(tool_call_dicts)
-
-            attempt = AttemptResult(
-                tables=tables,
-                persona=persona["name"],
-                error=result.is_error,
-                error_message=result.error_message,
-                cost_usd=result.total_cost_usd or 0.0,
-                duration_ms=result.duration_ms,
-            )
-        except Exception as e:
-            error_detail = "".join(traceback.format_exception(e))
-            attempt = AttemptResult(persona=persona["name"], error=True, error_message=str(e))
-            console.print(f"    [red]EXCEPTION: {e}[/red]")
-            if verbose:
-                console.print(Panel(error_detail, title="Traceback", border_style="red"))
-
-        attempt_results.append(attempt)
 
         if attempt.error:
             console.print(f"    [red]ERROR[/red]: {attempt.error_message or 'unknown'}")
-            # Show what we got before the error
             if result and result.tool_calls:
                 console.print(f"    [dim]Tool calls made: {len(result.tool_calls)}[/dim]")
                 for tc in result.tool_calls:
                     is_err = " [red](error)[/red]" if tc.is_error else ""
                     console.print(f"      {tc.name}{is_err}")
             if result and result.output:
-                # Show truncated agent output
                 output = result.output[:300]
                 if len(result.output) > 300:
                     output += "..."
@@ -338,7 +353,6 @@ async def run_probe(
                 f"tables=[cyan]{tables_str}[/cyan]"
             )
 
-        # Show code in verbose mode (both success and error)
         if verbose and result and result.tool_calls:
             code_blocks = _extract_code_from_tool_calls(result.tool_calls)
             for j, code in enumerate(code_blocks):
@@ -352,6 +366,7 @@ async def run_probe(
                     border_style="dim",
                 ))
 
+    attempt_results = [pair[0] for pair in results_pairs]
     agreement = score_agreement(attempt_results)
 
     if agreement.all_agreed:
