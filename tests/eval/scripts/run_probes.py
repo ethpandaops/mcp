@@ -266,6 +266,26 @@ def _extract_code_from_tool_calls(tool_calls: list[Any]) -> list[str]:
 # Global semaphore — set by main before probes run.
 _agent_semaphore: asyncio.Semaphore | None = None
 
+# Progress tracking
+_progress_lock = asyncio.Lock()
+_agents_completed = 0
+_agents_total = 0
+_probes_completed = 0
+_probes_total = 0
+
+
+async def _update_progress(probe_id: str, persona: str, done: bool = False) -> None:
+    """Print a progress line showing agent completion."""
+    global _agents_completed, _probes_completed
+    async with _progress_lock:
+        if done:
+            _agents_completed += 1
+        console.print(
+            f"\r  [dim]Progress: {_agents_completed}/{_agents_total} agents, "
+            f"{_probes_completed}/{_probes_total} probes done[/dim]"
+            f"  [dim](latest: {probe_id}/{persona})[/dim]",
+        )
+
 
 async def _run_single_attempt(
     question: str,
@@ -306,6 +326,7 @@ async def _run_single_attempt(
         except Exception as e:
             attempt = AttemptResult(persona=persona["name"], error=True, error_message=str(e))
 
+        await _update_progress(probe_id, persona["name"], done=True)
         return attempt, result
 
 
@@ -317,14 +338,13 @@ async def run_probe(
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Run a single probe: N independent attempts at the same question, concurrently."""
+    global _probes_completed
     from probes.analysis import score_agreement
 
     question = case["question"]
     probe_id = case["id"]
 
     personas_to_run = [PERSONAS[i % len(PERSONAS)] for i in range(attempts)]
-    persona_names = ", ".join(p["name"] for p in personas_to_run)
-    console.print(f"  [dim]Running {attempts} personas: {persona_names}[/dim]")
 
     tasks = [
         _run_single_attempt(question, probe_id, i, persona, model, mcp_url)
@@ -332,53 +352,39 @@ async def run_probe(
     ]
     results_pairs = await asyncio.gather(*tasks)
 
-    # Print results after all complete
-    for i, (attempt, result) in enumerate(results_pairs):
-        persona = personas_to_run[i]
-        console.print(f"  [bold]Attempt {i + 1}/{attempts}[/bold] [dim]({persona['name']})[/dim]")
-
-        if attempt.error:
-            console.print(f"    [red]ERROR[/red]: {attempt.error_message or 'unknown'}")
-            if result and result.tool_calls:
-                console.print(f"    [dim]Tool calls made: {len(result.tool_calls)}[/dim]")
-                for tc in result.tool_calls:
-                    is_err = " [red](error)[/red]" if tc.is_error else ""
-                    console.print(f"      {tc.name}{is_err}")
-            if result and result.output:
-                output = result.output[:300]
-                if len(result.output) > 300:
-                    output += "..."
-                console.print(f"    [dim]Agent output: {output}[/dim]")
-        else:
-            tables_str = ", ".join(attempt.tables) or "(no tables detected)"
-            n_tools = len(result.tool_calls)
-            duration = _format_duration(attempt.duration_ms)
-            cost = f"${attempt.cost_usd:.4f}"
-            console.print(
-                f"    [dim]{duration}  {cost}  {n_tools} tool calls[/dim]  "
-                f"tables=[cyan]{tables_str}[/cyan]"
-            )
-
-        if verbose and result and result.tool_calls:
-            code_blocks = _extract_code_from_tool_calls(result.tool_calls)
-            for j, code in enumerate(code_blocks):
-                label = f"execute_python call {j + 1}" if len(code_blocks) > 1 else "execute_python"
-                lines = code.strip().split("\n")
-                if len(lines) > 20:
-                    lines = lines[:20] + [f"... ({len(lines) - 20} more lines)"]
-                console.print(Panel(
-                    "\n".join(lines),
-                    title=f"[dim]{label}[/dim]",
-                    border_style="dim",
-                ))
-
     attempt_results = [pair[0] for pair in results_pairs]
     agreement = score_agreement(attempt_results)
 
-    if agreement.all_agreed:
-        console.print(f"  [green]=> All {attempts} agreed[/green]: {agreement.finding}")
-    else:
-        console.print(f"  [red]=> Disagreement[/red]: {agreement.finding}")
+    # Print probe summary when it finishes
+    async with _progress_lock:
+        _probes_completed += 1
+        if agreement.all_agreed:
+            console.print(f"  [green]AGREED[/green]  {probe_id}: {agreement.finding}")
+        else:
+            console.print(f"  [red]DISAGREE[/red] {probe_id}: {agreement.finding}")
+
+        if verbose:
+            for i, (attempt, result) in enumerate(results_pairs):
+                persona = personas_to_run[i]
+                if attempt.error:
+                    console.print(f"    {persona['name']}: [red]ERROR[/red] {attempt.error_message or 'unknown'}")
+                else:
+                    tables_str = ", ".join(attempt.tables) or "(none)"
+                    duration = _format_duration(attempt.duration_ms)
+                    console.print(f"    {persona['name']}: [dim]{duration}[/dim] tables=[cyan]{tables_str}[/cyan]")
+
+                if result and result.tool_calls:
+                    code_blocks = _extract_code_from_tool_calls(result.tool_calls)
+                    for j, code in enumerate(code_blocks):
+                        label = f"execute_python call {j + 1}" if len(code_blocks) > 1 else "execute_python"
+                        lines = code.strip().split("\n")
+                        if len(lines) > 20:
+                            lines = lines[:20] + [f"... ({len(lines) - 20} more lines)"]
+                        console.print(Panel(
+                            "\n".join(lines),
+                            title=f"[dim]{persona['name']}: {label}[/dim]",
+                            border_style="dim",
+                        ))
 
     return {
         "id": probe_id,
@@ -396,16 +402,18 @@ async def run_all_probes(
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Run all probes concurrently. Agent concurrency is controlled by the global semaphore."""
+    global _agents_total, _agents_completed, _probes_total, _probes_completed
+    _agents_total = len(cases) * attempts
+    _agents_completed = 0
+    _probes_total = len(cases)
+    _probes_completed = 0
+
     run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     total_cost = 0.0
 
-    async def run_one(i: int, case: dict[str, Any]) -> dict[str, Any]:
-        console.print(f"\n[bold][{i + 1}/{len(cases)}] {case['id']}[/bold]")
-        console.print(f"  [dim]{case['question']}[/dim]")
-        return await run_probe(case, attempts, model, mcp_url, verbose=verbose)
-
     probe_results = list(await asyncio.gather(
-        *(run_one(i, case) for i, case in enumerate(cases))
+        *(run_probe(case, attempts, model, mcp_url, verbose=verbose)
+          for case in cases)
     ))
 
     for result in probe_results:
