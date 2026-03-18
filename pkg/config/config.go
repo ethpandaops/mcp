@@ -18,12 +18,11 @@ import (
 
 // Config is the main configuration structure.
 type Config struct {
-	Server         ServerConfig         `yaml:"server"`
-	Sandbox        SandboxConfig        `yaml:"sandbox"`
-	Proxy          ProxyConfig          `yaml:"proxy"`
-	Storage        StorageConfig        `yaml:"storage"`
-	Observability  ObservabilityConfig  `yaml:"observability"`
-	SemanticSearch SemanticSearchConfig `yaml:"semantic_search"`
+	Server        ServerConfig        `yaml:"server"`
+	Sandbox       SandboxConfig       `yaml:"sandbox"`
+	Proxy         ProxyConfig         `yaml:"proxy"`
+	Storage       StorageConfig       `yaml:"storage"`
+	Observability ObservabilityConfig `yaml:"observability"`
 
 	path string `yaml:"-"`
 }
@@ -51,9 +50,6 @@ type ServerConfig struct {
 	// The server always runs HTTP with both SSE and streamable-http transports.
 	Transport string `yaml:"transport,omitempty"`
 }
-
-// SemanticSearchConfig holds configuration for semantic search.
-type SemanticSearchConfig struct{}
 
 // SandboxConfig holds sandbox execution configuration.
 type SandboxConfig struct {
@@ -283,9 +279,6 @@ func applyDefaults(cfg *Config) {
 	if cfg.Storage.CacheDir == "" {
 		cfg.Storage.CacheDir = pandaDataDir("cache")
 	}
-
-	// Semantic search defaults — model path is resolved at runtime by searchruntime.
-	// Leave empty to use the default search paths.
 }
 
 func pandaDataDir(subdir string) string {

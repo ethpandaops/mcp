@@ -40,7 +40,6 @@ make build                    # Build panda-server + panda
 make build-proxy             # Build standalone proxy binary
 make docker                   # Build Docker image
 make docker-sandbox           # Build sandbox container image
-make download-models          # Download embedding model for semantic search
 make install                  # Install panda-server + panda binaries into GOBIN
 
 # Test
@@ -55,7 +54,7 @@ make fmt                      # Format code (gofmt -s)
 make vet                      # Run go vet
 
 # Run
-make run                      # Build + download models + run server
+make run                      # Build + run server
 docker compose up -d          # Full local stack: server + proxy
 
 # CLI (requires a running server)
@@ -181,9 +180,6 @@ sandbox:
     enabled: true
     ttl: 30m
     max_sessions: 10
-
-semantic_search:
-  model_path: "models/all-MiniLM-L6-v2"
 ```
 
 Environment variables are substituted using `${VAR_NAME}` or `${VAR_NAME:-default}` syntax.
@@ -205,7 +201,7 @@ pkg/
   tool/            # MCP tool definitions and handlers
   resource/        # MCP resource definitions
   auth/            # OAuth/JWT client and storage
-  embedding/       # GGUF embedding wrapper for semantic search
+  embedding/       # Remote embedding client for semantic search
   config/          # Configuration loading and validation
   observability/   # Prometheus metrics
   types/           # Shared data types
@@ -226,8 +222,7 @@ docs/              # Deployment architecture docs
 1. `cp config.example.yaml config.yaml`
 2. `cp proxy-config.example.yaml proxy-config.yaml`
 3. `make docker-sandbox`
-4. `make download-models`
-5. `docker compose up -d`
+4. `docker compose up -d`
 
 Main local stack (`docker-compose.yaml`):
 - `server` on port `2480`

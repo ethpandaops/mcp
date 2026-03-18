@@ -69,13 +69,10 @@ jobs:
         run: uv sync
 
       - name: Build server
-        run: go build -o panda-server ./cmd/server
+        run: make build-server
 
       - name: Build proxy
-        run: go build -o panda-proxy ./cmd/proxy
-
-      - name: Download semantic search assets
-        run: make download-models
+        run: make build-proxy
 
       - name: Create CI configs
         run: |
@@ -119,13 +116,6 @@ jobs:
             base_url: "http://127.0.0.1:2480"
             sandbox_url: "http://127.0.0.1:2480"
 
-          modules:
-            clickhouse:
-              schema_discovery:
-                datasources:
-                  - name: "xatu"
-                  - name: "xatu-cbt"
-
           sandbox:
             backend: docker
             image: "ethpandaops/panda:sandbox-latest"
@@ -133,9 +123,6 @@ jobs:
 
           proxy:
             url: "http://127.0.0.1:18081"
-
-          semantic_search:
-            model_path: "models/all-MiniLM-L6-v2"
           EOF
 
       - name: Start proxy

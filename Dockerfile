@@ -12,7 +12,7 @@
 FROM golang:1.25-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates curl && \
+    git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -46,19 +46,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -X github.com/ethpandaops/panda/internal/version.BuildTime=${BUILD_TIME}" \
     -o panda-proxy ./cmd/proxy
 
-# Download embedding model (architecture-independent)
-RUN mkdir -p /assets/all-MiniLM-L6-v2 && \
-    curl -sL -o /assets/all-MiniLM-L6-v2/model.onnx \
-        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx && \
-    curl -sL -o /assets/all-MiniLM-L6-v2/tokenizer.json \
-        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json && \
-    curl -sL -o /assets/all-MiniLM-L6-v2/config.json \
-        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json && \
-    curl -sL -o /assets/all-MiniLM-L6-v2/special_tokens_map.json \
-        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/special_tokens_map.json && \
-    curl -sL -o /assets/all-MiniLM-L6-v2/tokenizer_config.json \
-        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json
-
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
@@ -78,9 +65,6 @@ WORKDIR /app
 # Copy binaries from builder
 COPY --from=builder /app/panda-server /app/panda-server
 COPY --from=builder /app/panda-proxy /app/panda-proxy
-
-# Copy embedding model
-COPY --from=builder /assets/all-MiniLM-L6-v2 /usr/share/panda/all-MiniLM-L6-v2
 
 # Create directories
 RUN mkdir -p /config /shared /output /data/storage && \

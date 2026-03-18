@@ -1,9 +1,4 @@
-.PHONY: build build-server build-panda build-proxy install install-server install-panda install-proxy test lint clean docker docker-push docker-sandbox test-sandbox run help download-models clean-models setup-hooks
-
-# Embedding model configuration
-MODELS_DIR := ./models
-MODEL_DIR := $(MODELS_DIR)/all-MiniLM-L6-v2
-HF_BASE := https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main
+.PHONY: build build-server build-panda build-proxy install install-server install-panda install-proxy test lint clean docker docker-push docker-sandbox test-sandbox run help setup-hooks
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -85,7 +80,7 @@ docker-sandbox: ## Build sandbox Docker image
 test-sandbox: ## Run sandbox package tests
 	go test -race -v ./pkg/sandbox/...
 
-run: build-server download-models ## Run the server
+run: build-server ## Run the server
 	./panda-server serve
 
 run-docker: docker ## Run with docker compose
@@ -120,18 +115,3 @@ version: ## Show version info
 	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Build Time: $(BUILD_TIME)"
 
-download-models: $(MODEL_DIR)/model.onnx ## Download embedding model from HuggingFace
-	@echo "Model downloaded to $(MODEL_DIR)"
-
-$(MODEL_DIR)/model.onnx:
-	@mkdir -p $(MODEL_DIR)
-	@echo "Downloading all-MiniLM-L6-v2 ONNX model from HuggingFace..."
-	@curl -sL -o $(MODEL_DIR)/model.onnx $(HF_BASE)/onnx/model.onnx
-	@curl -sL -o $(MODEL_DIR)/tokenizer.json $(HF_BASE)/tokenizer.json
-	@curl -sL -o $(MODEL_DIR)/config.json $(HF_BASE)/config.json
-	@curl -sL -o $(MODEL_DIR)/special_tokens_map.json $(HF_BASE)/special_tokens_map.json
-	@curl -sL -o $(MODEL_DIR)/tokenizer_config.json $(HF_BASE)/tokenizer_config.json
-	@echo "Model files downloaded to $(MODEL_DIR)"
-
-clean-models: ## Clean downloaded models
-	rm -rf $(MODELS_DIR)
