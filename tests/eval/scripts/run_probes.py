@@ -466,7 +466,7 @@ async def main_async(args: argparse.Namespace) -> None:
     if args.probe:
         cases = [c for c in cases if fnmatch.fnmatch(c["id"], args.probe)]
 
-    if args.retry:
+    if args.only_previously_failed:
         previous = get_latest_result()
         if previous:
             failed_ids = {
@@ -556,7 +556,7 @@ Examples:
         help="Run only the first N probes",
     )
     parser.add_argument(
-        "--retry",
+        "--only-previously-failed",
         action="store_true",
         help="Only re-run probes that disagreed in the last run",
     )

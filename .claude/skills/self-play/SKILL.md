@@ -70,7 +70,7 @@ Read the existing `modules/clickhouse/examples.yaml` to understand the format be
 
 After adding examples:
 1. `make build` to rebuild the server with new examples
-2. Re-run the probes for the fixed questions: `uv run python -m scripts.run_probes --model claude-haiku-4-5 --probe "the_fixed_probe_id" --attempts 3 --local-server`
+2. Re-run only the previously failing probes: `uv run python -m scripts.run_probes --model claude-haiku-4-5 --only-previously-failed --local-server`
 3. Check if agreement improved
 
 ### Step 5: Repeat
@@ -84,6 +84,7 @@ Go back to Step 1 with more probes or different probes until the user is satisfi
 - Use `--probe "glob_pattern"` to filter specific probes by ID (fnmatch syntax, single pattern only — no commas). Examples: `--probe "block_*"`, `--probe "mev_*"`
 - Use `-n N` to limit how many probes to run
 - Use `-v` for verbose output showing generated code
+- Use `--only-previously-failed` to re-run only probes that disagreed in the last run
 
 ## Key files
 
