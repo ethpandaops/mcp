@@ -118,6 +118,34 @@ block_properties:
         FROM {network}.fct_block_head FINAL
         WHERE slot_start_date_time >= now() - INTERVAL 1 HOUR
 
+block_status:
+  name: Block Status (Orphans & Reorgs)
+  description: Queries for analyzing orphaned and reorged blocks using the fct_block table on xatu-cbt. Use fct_block for orphan/reorg queries — it has a `status` column with values like 'canonical' and 'orphaned'. Do NOT use fct_block_canonical or fct_block_head for orphan detection. Note that fct_block does NOT include missed slots — only blocks that were actually produced.
+  examples:
+    - name: Orphaned block count
+      description: Count orphaned (reorged) blocks over a time window using fct_block. Filter on status = 'orphaned'.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          count() AS orphaned_blocks
+        FROM {network}.fct_block FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 24 HOUR
+          AND status = 'orphaned'
+
+    - name: Orphaned blocks over time
+      description: Track orphaned blocks per hour using fct_block.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          toStartOfHour(slot_start_date_time) AS hour,
+          countIf(status = 'orphaned') AS orphaned_blocks,
+          countIf(status = 'canonical') AS canonical_blocks,
+          orphaned_blocks * 100.0 / (orphaned_blocks + canonical_blocks) AS orphan_rate_pct
+        FROM {network}.fct_block FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 24 HOUR
+        GROUP BY hour
+        ORDER BY hour DESC
+
 validators:
   name: Validator Analysis
   description: Queries for analyzing validator statistics
