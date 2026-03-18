@@ -263,6 +263,10 @@ def _extract_code_from_tool_calls(tool_calls: list[Any]) -> list[str]:
     return code_blocks
 
 
+# Global semaphore — set by main before probes run.
+_agent_semaphore: asyncio.Semaphore | None = None
+
+
 async def _run_single_attempt(
     question: str,
     probe_id: str,
@@ -276,31 +280,33 @@ async def _run_single_attempt(
     from config.settings import EvalSettings
     from probes.analysis import AttemptResult, extract_tables
 
-    settings = EvalSettings(model=model, mcp_url=mcp_url)
-    agent = MCPAgent(settings)
-    prompt = persona["prefix"] + question
+    sem = _agent_semaphore or asyncio.Semaphore(999)
+    async with sem:
+        settings = EvalSettings(model=model, mcp_url=mcp_url)
+        agent = MCPAgent(settings)
+        prompt = persona["prefix"] + question
 
-    result = None
-    try:
-        result = await agent.execute(prompt, test_id=f"probe-{probe_id}-{attempt_index + 1}")
-        tool_call_dicts = [
-            {"name": tc.name, "input": tc.input, "result": tc.result}
-            for tc in result.tool_calls
-        ]
-        tables = await extract_tables(tool_call_dicts)
+        result = None
+        try:
+            result = await agent.execute(prompt, test_id=f"probe-{probe_id}-{attempt_index + 1}")
+            tool_call_dicts = [
+                {"name": tc.name, "input": tc.input, "result": tc.result}
+                for tc in result.tool_calls
+            ]
+            tables = await extract_tables(tool_call_dicts)
 
-        attempt = AttemptResult(
-            tables=tables,
-            persona=persona["name"],
-            error=result.is_error,
-            error_message=result.error_message,
-            cost_usd=result.total_cost_usd or 0.0,
-            duration_ms=result.duration_ms,
-        )
-    except Exception as e:
-        attempt = AttemptResult(persona=persona["name"], error=True, error_message=str(e))
+            attempt = AttemptResult(
+                tables=tables,
+                persona=persona["name"],
+                error=result.is_error,
+                error_message=result.error_message,
+                cost_usd=result.total_cost_usd or 0.0,
+                duration_ms=result.duration_ms,
+            )
+        except Exception as e:
+            attempt = AttemptResult(persona=persona["name"], error=True, error_message=str(e))
 
-    return attempt, result
+        return attempt, result
 
 
 async def run_probe(
@@ -318,7 +324,7 @@ async def run_probe(
 
     personas_to_run = [PERSONAS[i % len(PERSONAS)] for i in range(attempts)]
     persona_names = ", ".join(p["name"] for p in personas_to_run)
-    console.print(f"  [dim]Running {attempts} personas concurrently: {persona_names}[/dim]")
+    console.print(f"  [dim]Running {attempts} personas: {persona_names}[/dim]")
 
     tasks = [
         _run_single_attempt(question, probe_id, i, persona, model, mcp_url)
@@ -389,20 +395,21 @@ async def run_all_probes(
     mcp_url: str,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Run all probes and produce a full result."""
+    """Run all probes concurrently. Agent concurrency is controlled by the global semaphore."""
     run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-    probe_results: list[dict[str, Any]] = []
     total_cost = 0.0
 
-    for i, case in enumerate(cases):
+    async def run_one(i: int, case: dict[str, Any]) -> dict[str, Any]:
         console.print(f"\n[bold][{i + 1}/{len(cases)}] {case['id']}[/bold]")
         console.print(f"  [dim]{case['question']}[/dim]")
+        return await run_probe(case, attempts, model, mcp_url, verbose=verbose)
 
-        result = await run_probe(case, attempts, model, mcp_url, verbose=verbose)
-        probe_results.append(result)
+    probe_results = list(await asyncio.gather(
+        *(run_one(i, case) for i, case in enumerate(cases))
+    ))
 
-        probe_cost = sum(a.get("cost_usd", 0) for a in result["attempts"])
-        total_cost += probe_cost
+    for result in probe_results:
+        total_cost += sum(a.get("cost_usd", 0) for a in result["attempts"])
 
     full_agreement = sum(1 for p in probe_results if p["agreement"]["all_agreed"])
     disagreement = len(probe_results) - full_agreement
@@ -515,15 +522,20 @@ async def main_async(args: argparse.Namespace) -> None:
         mcp_url = "http://localhost:2480"
 
     try:
+        global _agent_semaphore
+        _agent_semaphore = asyncio.Semaphore(args.concurrency)
+
+        total_agents = len(cases) * args.attempts
         console.print(
-            f"[bold]Running {len(cases)} probes, {args.attempts} attempts each[/bold]"
+            f"[bold]Running {len(cases)} probes, {args.attempts} attempts each "
+            f"({total_agents} agents, max {args.concurrency} concurrent)[/bold]"
         )
         console.print(f"  Model: [cyan]{args.model}[/cyan]")
         console.print(f"  Server: [cyan]{mcp_url}[/cyan]")
 
         previous = get_latest_result()
         results = await run_all_probes(
-            cases, args.attempts, args.model, mcp_url, verbose=args.verbose
+            cases, args.attempts, args.model, mcp_url, verbose=args.verbose,
         )
 
         print_results(results)
@@ -569,6 +581,13 @@ Examples:
         type=int,
         default=None,
         help="Run only the first N probes",
+    )
+    parser.add_argument(
+        "-c",
+        "--concurrency",
+        type=int,
+        default=5,
+        help="Number of probes to run in parallel (default: 5)",
     )
     parser.add_argument(
         "--only-previously-failed",

@@ -11,6 +11,8 @@ sandbox:
   backend: docker
   image: "ethpandaops/panda:sandbox-latest"
   network: "ethpandaops-panda-internal"
+  sessions:
+    max_sessions: 50
 
 proxy:
   url: "https://panda-proxy.ethpandaops.io"
