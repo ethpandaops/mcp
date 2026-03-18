@@ -338,7 +338,23 @@ network_health:
           AND votes_max > 0
         ORDER BY slot_start_date_time DESC
 
-    - name: Block arrival time by node 
+    - name: Attestation agreement rate
+      description: Calculate attestation agreement — what fraction of attestations pointed to the same head block. This is the same as head correctness rate. Use fct_attestation_correctness_head which has votes_head (agreed on head) vs votes_other (disagreed).
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          toStartOfHour(slot_start_date_time) AS hour,
+          SUM(votes_head) AS total_head_votes,
+          SUM(votes_other) AS total_other_votes,
+          SUM(votes_head + votes_other) AS total_votes,
+          SUM(votes_head) / SUM(votes_head + votes_other) * 100 AS agreement_pct
+        FROM {network}.fct_attestation_correctness_head FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 6 HOUR
+          AND votes_max > 0
+        GROUP BY hour
+        ORDER BY hour DESC
+
+    - name: Block arrival time by node
       description: Get block arrival times (seen_slot_start_diff) per node. Useful for identifying slow nodes or network issues.
       cluster: xatu-cbt
       query: |
