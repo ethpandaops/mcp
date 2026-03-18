@@ -80,8 +80,8 @@ class PandaServer:
             stderr=subprocess.DEVNULL,
         )
 
-        # Wait for server to be ready (embedding index build can take a while on first run)
-        for i in range(120):
+        # Wait for server to be ready (EIP embedding takes ~3min on cold start)
+        for i in range(240):
             if self._port_open():
                 console.print(f"[green]Server ready on :{PROBE_SERVER_PORT} ({i + 1}s)[/green]")
                 return
@@ -92,7 +92,7 @@ class PandaServer:
             if i > 0 and i % 10 == 0:
                 console.print(f"[dim]  Still waiting... ({i}s)[/dim]")
 
-        console.print("[red]Server failed to start within 120s[/red]")
+        console.print("[red]Server failed to start within 240s[/red]")
         self.stop()
         sys.exit(1)
 
