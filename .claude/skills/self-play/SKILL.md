@@ -56,15 +56,23 @@ Let the user pick, or tell you the right answer.
 
 ### Step 3: Write the fix
 
-Based on the user's answer, add a targeted example to `modules/clickhouse/examples.yaml` that clearly shows the correct table and query pattern for that question domain. The example should be:
-- In the appropriate category (create a new one if needed)
-- Clear about which cluster to use (`xatu` vs `xatu-cbt`)
+Based on the user's answer, decide the best intervention. Everything in this repo is in scope — pick whatever will most effectively resolve the ambiguity:
+
+- **Examples** (`modules/clickhouse/examples.yaml`) — add a query example showing the correct table and pattern. Best for "which table do I use for X?" ambiguities.
+- **Runbooks** (`runbooks/*.md`) — add or update a runbook with procedural guidance. Best for multi-step investigative workflows.
+- **Python API docs** — update module docstrings/descriptions if the Python API itself is misleading.
+- **Getting-started snippets** — update per-module guidance if the agent is missing basic context.
+- **Schema comments** — if a table's purpose is unclear, the fix might be upstream in xatu-cbt, not here. Flag it.
+
+For examples specifically:
+- Put them in the appropriate category (create a new one if needed)
+- Be clear about which cluster to use (`xatu` vs `xatu-cbt`)
 - Include the partition key filter (`slot_start_date_time`) and network filter
-- Use `{network}` placeholder for the network name in CBT tables, or `meta_network_name` filter for xatu tables
+- Use `{network}` placeholder for network name in CBT tables, or `meta_network_name` filter for xatu tables
 
-Read the existing `modules/clickhouse/examples.yaml` to understand the format before adding.
+Read existing files before modifying them.
 
-**Tip**: Include negative guidance in category descriptions (e.g. "Use fct_block_head — NOT canonical_execution_block, fct_prepared_block"). This steers the model away from wrong tables effectively. A single well-placed category can fix multiple related probes.
+**Tip**: Include negative guidance in category descriptions (e.g. "Use fct_block_head — NOT canonical_execution_block, fct_prepared_block"). This steers the model away from wrong tables effectively.
 
 ### Step 4: Rebuild and re-run
 
