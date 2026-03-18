@@ -531,10 +531,14 @@ async def main_async(args: argparse.Namespace) -> None:
         _agent_semaphore = asyncio.Semaphore(args.concurrency)
 
         total_agents = len(cases) * args.attempts
+        persona_names = ", ".join(
+            PERSONAS[i % len(PERSONAS)]["name"] for i in range(args.attempts)
+        )
         console.print(
-            f"[bold]Running {len(cases)} probes, {args.attempts} attempts each "
+            f"[bold]Running {len(cases)} probes, {args.attempts} personas each "
             f"({total_agents} agents, max {args.concurrency} concurrent)[/bold]"
         )
+        console.print(f"  Personas: [dim]{persona_names}[/dim]")
         console.print(f"  Model: [cyan]{args.model}[/cyan]")
         console.print(f"  Server: [cyan]{mcp_url}[/cyan]")
 
