@@ -15,17 +15,16 @@ const SearchToolName = "search"
 
 const searchDescription = `Search indexed examples, runbooks, and EIPs using semantic search.
 
-Use ` + "`type=\"examples\"`" + ` for query snippets (SQL, PromQL, LogQL), ` + "`type=\"runbooks\"`" + ` for multi-step investigation procedures, and ` + "`type=\"eips\"`" + ` for Ethereum Improvement Proposals.
+When ` + "`type`" + ` is omitted, searches across all types (examples, runbooks, and EIPs) and returns combined results. Use a specific type to narrow results.
 
-` + "`type=\"notebooks\"`" + ` is accepted as an alias for runbooks.
+` + "`type=\"examples\"`" + ` for query snippets (SQL, PromQL, LogQL), ` + "`type=\"runbooks\"`" + ` for multi-step investigation procedures, ` + "`type=\"eips\"`" + ` for Ethereum Improvement Proposals. ` + "`type=\"notebooks\"`" + ` is accepted as an alias for runbooks.
 
 Examples:
-- search(type="examples", query="block")
-- search(type="examples", query="validator", category="validators")
-- search(type="runbooks", query="network not finalizing")
-- search(type="runbooks", query="slow clickhouse query", tag="performance")
-- search(type="eips", query="account abstraction")
-- search(type="eips", query="blob transactions", status="Final")`
+- search(query="blob propagation getBlobs")
+- search(query="validator performance")
+- search(type="examples", query="block", category="validators")
+- search(type="runbooks", query="network not finalizing", tag="finality")
+- search(type="eips", query="account abstraction", status="Final")`
 
 type searchHandler struct {
 	log     logrus.FieldLogger
@@ -51,7 +50,7 @@ func NewSearchTool(
 				Properties: map[string]any{
 					"type": map[string]any{
 						"type":        "string",
-						"description": "Search target: 'examples' for query snippets, 'runbooks' for investigation procedures, or 'eips' for Ethereum Improvement Proposals. 'notebooks' is accepted as an alias for 'runbooks'.",
+						"description": "Optional. When omitted, searches all types. Use 'examples' for query snippets, 'runbooks' for investigation procedures, or 'eips' for Ethereum Improvement Proposals. 'notebooks' is accepted as an alias for 'runbooks'.",
 						"enum": []string{
 							searchsvc.SearchTypeExamples,
 							searchsvc.SearchTypeRunbooks,
@@ -82,7 +81,7 @@ func NewSearchTool(
 						"maximum":     searchsvc.MaxExampleSearchLimit,
 					},
 				},
-				Required: []string{"type", "query"},
+				Required: []string{"query"},
 			},
 		},
 		Handler: h.handle,
@@ -95,14 +94,19 @@ func (h *searchHandler) handle(
 ) (*mcp.CallToolResult, error) {
 	h.log.Debug("Handling search request")
 
-	searchType, err := searchsvc.NormalizeSearchType(request.GetString("type", ""))
-	if err != nil {
-		return CallToolError(err), nil
-	}
-
 	query := request.GetString("query", "")
 	if query == "" {
 		return CallToolError(fmt.Errorf("query is required and cannot be empty")), nil
+	}
+
+	rawType := request.GetString("type", "")
+	if rawType == "" {
+		return h.searchAll(request, query)
+	}
+
+	searchType, err := searchsvc.NormalizeSearchType(rawType)
+	if err != nil {
+		return CallToolError(err), nil
 	}
 
 	switch searchType {
@@ -115,6 +119,31 @@ func (h *searchHandler) handle(
 	default:
 		return CallToolError(fmt.Errorf("unsupported search type: %q", searchType)), nil
 	}
+}
+
+func (h *searchHandler) searchAll(
+	request mcp.CallToolRequest,
+	query string,
+) (*mcp.CallToolResult, error) {
+	response, err := h.service.SearchAll(
+		query,
+		request.GetInt("limit", searchsvc.DefaultSearchLimit),
+	)
+	if err != nil {
+		return CallToolError(err), nil
+	}
+
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return CallToolError(fmt.Errorf("marshaling response: %w", err)), nil
+	}
+
+	h.log.WithFields(logrus.Fields{
+		"type":  "all",
+		"query": query,
+	}).Debug("Search completed")
+
+	return CallToolSuccess(string(data)), nil
 }
 
 func (h *searchHandler) searchExamples(
