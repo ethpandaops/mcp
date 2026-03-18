@@ -43,21 +43,21 @@ class ProbeResult:
 
 
 _EXTRACT_TABLES_PROMPT = """\
-You are analyzing Python code that was generated to query ClickHouse databases.
-
-Extract the ClickHouse table names that this code queries. Return ONLY a JSON array of table name strings. If no tables are found, return an empty array.
+The Python code below contains SQL queries sent to ClickHouse. Extract the LITERAL table names that appear in FROM and JOIN clauses in the SQL strings.
 
 Rules:
-- Include only ClickHouse table names (not Python module names, variables, or imports)
-- Strip schema prefixes like "default." or "{network}." — return just the table name
-- Include tables from FROM, JOIN, and subquery clauses
+- ONLY return table names that literally appear as text in the SQL strings after FROM or JOIN keywords
+- Strip schema/database prefixes (e.g. "default.foo" → "foo", "mainnet.bar" → "bar", "{network}.baz" → "baz")
+- Do NOT infer or guess table names from column names, variable names, or context
+- Do NOT include Python module names, function names, or imports
+- If the code has no SQL queries or no FROM/JOIN clauses, return an empty array
 
 Python code:
 ```python
 {code}
 ```
 
-Return ONLY the JSON array, nothing else. Example: ["canonical_beacon_block", "beacon_api_eth_v1_events_attestation"]
+Return ONLY a JSON array of the literal table names found. Example: ["canonical_beacon_block", "fct_block_first_seen_by_node"]
 """
 
 
