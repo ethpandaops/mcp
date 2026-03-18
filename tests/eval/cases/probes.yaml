@@ -129,18 +129,12 @@
 # === Network Nodes ===
 
 - id: active_nodes_by_client
-  question: "How many active Ethereum nodes are there on mainnet broken down by consensus client implementation?"
+  question: "How many active Xatu sentry nodes are there on mainnet broken down by consensus client implementation?"
   tags: [nodes, clients]
 
-- id: nodes_by_country
-  question: "What is the distribution of Ethereum nodes by country on mainnet? Show the top 10 countries."
+- id: xatu_nodes_by_country
+  question: "What is the distribution of Xatu sentry nodes by country on mainnet? Show the top 10 countries."
   tags: [nodes, geography]
-
-# === Data Pipeline ===
-
-- id: data_pipeline_health
-  question: "What is the most recent slot_start_date_time across the main Xatu ClickHouse tables on mainnet? This checks data freshness."
-  tags: [pipeline, health]
 
 # === Cross-domain (intentionally ambiguous) ===
 
@@ -151,3 +145,45 @@
 - id: entity_performance_comparison
   question: "Compare the top 5 staking entities on mainnet by both attestation liveness and head correctness over the last 24 hours."
   tags: [entities, attestations, correctness, comparison]
+
+# === From notebooks investigations ===
+
+- id: empty_blob_submitters
+  question: "Who is posting empty blobs (blobs containing zero data) to Ethereum mainnet? Show the top submitters by count."
+  tags: [blobs, submitters, transactions]
+
+- id: head_accuracy_vs_blob_count
+  question: "Do community staking operators (Lido CSM, Rocketpool, Solo Stakers) see worse head vote accuracy as blob counts increase on mainnet?"
+  tags: [attestations, correctness, blobs, entities]
+
+- id: high_peer_count_advantage
+  question: "Does having a high peer count (6k+ peers) give an Ethereum node a significant advantage in seeing blocks first on mainnet?"
+  tags: [p2p, peers, blocks, timing]
+
+- id: timing_games_by_entity
+  question: "Which staking entities delay their blocks to extract more MEV on mainnet? Show median block arrival time by entity."
+  tags: [mev, timing, entities, blocks]
+
+- id: stale_parent_frequency
+  question: "How often do Ethereum proposers build on a genuinely stale parent (not just missed slots) on mainnet? Show the distribution of parent distances."
+  tags: [blocks, reorgs, proposers]
+
+- id: ipv4_peer_sharing
+  question: "How many peer_ids and consensus clients share the same IPv4 address on Ethereum mainnet?"
+  tags: [p2p, peers, network]
+
+- id: precompile_gas_usage
+  question: "Which EVM precompiles consume the most gas on Ethereum mainnet? Rank them by total gas consumed in the last 24 hours."
+  tags: [execution, evm, gas, precompiles]
+
+- id: blob_mempool_getblobs_success
+  question: "How does blob mempool propagation affect engine_getBlobs success rates on mainnet? What fraction of getBlobs calls return SUCCESS vs EMPTY?"
+  tags: [blobs, engine_api, da]
+
+- id: slot_13505944_reorg
+  question: "Why was the block at slot 13505944 orphaned on mainnet despite having a valid payload with 909 transactions and 21 blobs? When did nodes first see it?"
+  tags: [reorgs, blocks, timing, debugging]
+
+- id: block_arrival_vs_blob_count
+  question: "How does block arrival time correlate with the number of blobs in a block on mainnet over the last hour?"
+  tags: [blocks, blobs, timing, correlation]
