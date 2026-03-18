@@ -106,6 +106,15 @@ type SearchEIPResult struct {
 	SimilarityScore float64 `json:"similarity_score"`
 }
 
+// SearchAllResponse is the response for searching across all types.
+type SearchAllResponse struct {
+	Type     string                  `json:"type"`
+	Query    string                  `json:"query"`
+	Examples *SearchExamplesResponse `json:"examples,omitempty"`
+	Runbooks *SearchRunbooksResponse `json:"runbooks,omitempty"`
+	EIPs     *SearchEIPsResponse     `json:"eips,omitempty"`
+}
+
 // SearchEIPsResponse is the response for EIP search.
 type SearchEIPsResponse struct {
 	Type                string             `json:"type"`
@@ -396,6 +405,37 @@ func (s *Service) SearchEIPs(
 		AvailableCategories: availableCategories,
 		AvailableTypes:      availableTypes,
 	}, nil
+}
+
+// SearchAll searches across all available indices and merges results.
+func (s *Service) SearchAll(query string, limit int) (*SearchAllResponse, error) {
+	resp := &SearchAllResponse{
+		Type:  "all",
+		Query: query,
+	}
+
+	if s.exampleIndex != nil {
+		examples, err := s.SearchExamples(query, "", limit)
+		if err == nil {
+			resp.Examples = examples
+		}
+	}
+
+	if s.runbookIndex != nil && s.runbookReg != nil {
+		runbooks, err := s.SearchRunbooks(query, "", limit)
+		if err == nil {
+			resp.Runbooks = runbooks
+		}
+	}
+
+	if s.eipIndex != nil && s.eipReg != nil {
+		eips, err := s.SearchEIPs(query, "", "", "", limit)
+		if err == nil {
+			resp.EIPs = eips
+		}
+	}
+
+	return resp, nil
 }
 
 func clampSearchLimit(limit, max int) int {
