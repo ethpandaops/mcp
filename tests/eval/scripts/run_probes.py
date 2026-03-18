@@ -524,8 +524,8 @@ Examples:
     parser.add_argument(
         "--attempts",
         type=int,
-        default=3,
-        help="Number of independent attempts per probe (default: 3)",
+        default=5,
+        help="Number of independent attempts per probe (default: 5)",
     )
     parser.add_argument(
         "--probe",
