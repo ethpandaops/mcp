@@ -512,6 +512,8 @@ async def main_async(args: argparse.Namespace) -> None:
             console.print("[yellow]No previous results to retry from[/yellow]")
 
     if args.limit:
+        import random
+        random.shuffle(cases)
         cases = cases[:args.limit]
 
     if not cases:
