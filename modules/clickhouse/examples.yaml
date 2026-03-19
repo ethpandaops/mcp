@@ -269,8 +269,8 @@ network_health:
   name: Network Health Monitoring
   description: Queries used for monitoring Ethereum network health, derived from production alerting rules
   examples:
-    - name: Attestation participation rate
-      description: Calculate the ratio of attesting validators to total validators per slot. Used to detect participation drops below 66% which could indicate network issues.
+    - name: Attestation participation rate (raw events)
+      description: Calculate the ratio of attesting validators to total validators per slot using raw event data from xatu cluster. For a simpler pre-aggregated approach, use fct_attestation_correctness_head on xatu-cbt instead.
       cluster: xatu
       query: |
         WITH total_validators AS (
@@ -282,7 +282,7 @@ network_health:
               slot_start_date_time,
               committee_index,
               validators
-            FROM default.beacon_api_eth_v1_beacon_committee
+            FROM beacon_api_eth_v1_beacon_committee
             WHERE slot_start_date_time >= now() - INTERVAL 5 MINUTE
               AND meta_network_name = 'mainnet'
             LIMIT 1 BY slot_start_date_time, committee_index
@@ -293,7 +293,7 @@ network_health:
           SELECT
             slot_start_date_time,
             COUNT(DISTINCT attesting_validator_index) AS attesting_validators
-          FROM default.beacon_api_eth_v1_events_attestation
+          FROM beacon_api_eth_v1_events_attestation
           WHERE slot_start_date_time >= now() - INTERVAL 5 MINUTE
             AND meta_network_name = 'mainnet'
           GROUP BY slot_start_date_time
@@ -422,8 +422,8 @@ network_health:
         GROUP BY slot_start_date_time, slot
         ORDER BY slot_start_date_time DESC
 
-    - name: Block arrival by consensus client 
-      description: Compare block arrival times across different consensus client implementations.
+    - name: Block arrival comparison across consensus clients
+      description: Compare block arrival times across consensus client implementations for network health monitoring.
       cluster: xatu-cbt
       query: |
         SELECT
@@ -438,7 +438,7 @@ network_health:
         GROUP BY client
         ORDER BY avg_arrival_ms ASC
 
-    - name: Block arrival by country 
+    - name: Block arrival by country
       description: Compare block arrival times across different geographic locations.
       cluster: xatu-cbt
       query: |
@@ -532,7 +532,7 @@ network_health:
 
 entity_analysis:
   name: Entity Analysis
-  description: Queries for analyzing staking entities (operators, pools, exchanges) and their performance. For entity-level comparisons, use the pre-aggregated entity tables (fct_attestation_liveness_by_entity_head, fct_attestation_correctness_by_entity_head) — these already group by entity. Only use per-validator tables (fct_attestation_correctness_by_validator_head + ethseer_validator_entity) when you need to filter by specific validator-level criteria or custom entity groupings not available in the entity fact tables.
+  description: Queries for analyzing staking entities (operators, pools, exchanges) and their performance. For entity-level liveness, use fct_attestation_liveness_by_entity_head (pre-aggregated by entity). For entity-level correctness, aggregate fct_attestation_correctness_by_validator_head joined with ethseer_validator_entity — there is no pre-aggregated correctness-by-entity table. For block proposals by entity, use fct_block_proposer_entity.
   examples:
     - name: Entity attestation liveness ranking
       description: Rank staking entities by attestation liveness (attestations vs missed).
@@ -566,7 +566,7 @@ entity_analysis:
         ORDER BY hour DESC, attestations DESC
 
     - name: Entity performance comparison (liveness + correctness)
-      description: Compare staking entities by both attestation liveness and head correctness. Use fct_attestation_liveness_by_entity_head for liveness and fct_attestation_correctness_by_entity_head for entity-level correctness.
+      description: Compare staking entities by both attestation liveness and head correctness. Use fct_attestation_liveness_by_entity_head for liveness. For entity-level correctness, aggregate fct_attestation_correctness_by_validator_head joined with ethseer_validator_entity (there is no pre-aggregated correctness-by-entity table).
       cluster: xatu-cbt
       query: |
         WITH liveness AS (
@@ -581,13 +581,14 @@ entity_analysis:
         ),
         correctness AS (
           SELECT
-            entity,
-            SUM(votes_head) AS total_head_votes,
-            SUM(votes_head + votes_other) AS total_votes,
-            SUM(votes_head) / SUM(votes_head + votes_other) AS correctness_rate
-          FROM {network}.fct_attestation_correctness_by_entity_head FINAL
-          WHERE slot_start_date_time >= now() - INTERVAL 1 DAY
-          GROUP BY entity
+            e.entity,
+            countIf(c.slot_distance = 0) AS correct_head_votes,
+            count() AS total_votes,
+            correct_head_votes / total_votes AS correctness_rate
+          FROM {network}.fct_attestation_correctness_by_validator_head c FINAL
+          INNER JOIN {network}.ethseer_validator_entity e FINAL ON c.attesting_validator_index = e.index
+          WHERE c.slot_start_date_time >= now() - INTERVAL 1 DAY
+          GROUP BY e.entity
         )
         SELECT
           l.entity,
@@ -869,20 +870,6 @@ mev_analysis:
         SELECT * FROM mev_stats
         UNION ALL
         SELECT * FROM local_stats
-
-    - name: MEV bid value distribution
-      description: Get the distribution of MEV bid values (min, p50, p95, max) using fct_mev_bid_value.
-      cluster: xatu-cbt
-      query: |
-        SELECT
-          MIN(value) / 1e18 AS min_value_eth,
-          quantile(0.50)(value) / 1e18 AS p50_value_eth,
-          quantile(0.95)(value) / 1e18 AS p95_value_eth,
-          MAX(value) / 1e18 AS max_value_eth,
-          AVG(value) / 1e18 AS avg_value_eth,
-          COUNT() AS total_bids
-        FROM {network}.fct_mev_bid_value FINAL
-        WHERE slot_start_date_time >= now() - INTERVAL 1 HOUR
 
     - name: Hourly MEV activity trend
       description: Track MEV activity trends by hour including bid counts and block values.
