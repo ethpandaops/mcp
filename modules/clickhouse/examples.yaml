@@ -185,7 +185,7 @@ block_status:
 
 validators:
   name: Validator Analysis
-  description: Queries for analyzing validator statistics
+  description: Queries for analyzing validator counts, status distribution, and balances. Use canonical_beacon_validators on the xatu cluster — it has one row per validator per epoch with status and balance. This single table is sufficient for validator count, status distribution, and balance queries. Do not join to dim_validator_status or fct_validator_balance for simple count/status queries.
   examples:
     - name: Active validator count for most recent finalized epoch
       description: Get total count of active validators
@@ -532,7 +532,7 @@ network_health:
 
 entity_analysis:
   name: Entity Analysis
-  description: Queries for analyzing staking entities (operators, pools, exchanges) and their performance
+  description: Queries for analyzing staking entities (operators, pools, exchanges) and their performance. For entity-level comparisons, use the pre-aggregated entity tables (fct_attestation_liveness_by_entity_head, fct_attestation_correctness_by_entity_head) — these already group by entity. Only use per-validator tables (fct_attestation_correctness_by_validator_head + ethseer_validator_entity) when you need to filter by specific validator-level criteria or custom entity groupings not available in the entity fact tables.
   examples:
     - name: Entity attestation liveness ranking
       description: Rank staking entities by attestation liveness (attestations vs missed).
@@ -690,7 +690,7 @@ entity_analysis:
 
 mev_analysis:
   name: MEV Analysis
-  description: Queries for analyzing MEV (Maximal Extractable Value) activity including relays, builders, and block values
+  description: Queries for analyzing MEV (Maximal Extractable Value) activity including relays, builders, and block values. For relay-level market share use fct_block_mev_head (xatu-cbt). For individual bid data (values, builder pubkeys, bid traces) use mev_relay_bid_trace (xatu). For validator registrations use mev_relay_validator_registration (xatu).
   examples:
     - name: MEV relay activity
       description: Analyze MEV relay bid activity per slot.
@@ -880,6 +880,26 @@ mev_analysis:
           AND value IS NOT NULL
         GROUP BY hour
         ORDER BY hour DESC
+
+    - name: MEV bid value distribution
+      description: Distribution of MEV bid values to understand the value spectrum. Uses mev_relay_bid_trace on the xatu cluster which contains individual bid data with value (in wei).
+      cluster: xatu
+      query: |
+        SELECT
+          CASE
+            WHEN value / 1e18 < 0.01 THEN '<0.01 ETH'
+            WHEN value / 1e18 < 0.05 THEN '0.01-0.05 ETH'
+            WHEN value / 1e18 < 0.1 THEN '0.05-0.1 ETH'
+            WHEN value / 1e18 < 0.5 THEN '0.1-0.5 ETH'
+            ELSE '>0.5 ETH'
+          END AS value_bucket,
+          count() AS bid_count,
+          avg(value / 1e18) AS avg_value_eth
+        FROM mev_relay_bid_trace
+        WHERE meta_network_name = 'mainnet'
+          AND slot_start_date_time >= now() - INTERVAL 1 HOUR
+        GROUP BY value_bucket
+        ORDER BY avg_value_eth
 
 head_accuracy:
   name: Head Vote Accuracy
