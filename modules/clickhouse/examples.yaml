@@ -688,9 +688,28 @@ entity_analysis:
         GROUP BY b.blob_count, ec.entity
         ORDER BY b.blob_count, ec.entity
 
+    - name: Timing games by entity
+      description: Identify entities that consistently propose blocks late (timing games to capture more MEV). Uses fct_block_first_seen_by_node for arrival timing and fct_block_proposer_entity for entity identity. These two tables are sufficient — do not add fct_block_mev_head or fct_prepared_block.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          e.entity,
+          AVG(b.seen_slot_start_diff) AS avg_arrival_ms,
+          quantile(0.50)(b.seen_slot_start_diff) AS p50_arrival_ms,
+          quantile(0.95)(b.seen_slot_start_diff) AS p95_arrival_ms,
+          COUNT(DISTINCT b.slot) AS slots_proposed
+        FROM {network}.fct_block_first_seen_by_node b FINAL
+        INNER JOIN {network}.fct_block_proposer_entity e FINAL ON b.slot = e.slot
+        WHERE b.slot_start_date_time >= now() - INTERVAL 24 HOUR
+          AND e.entity != 'unknown'
+        GROUP BY e.entity
+        HAVING slots_proposed >= 10
+        ORDER BY avg_arrival_ms DESC
+        LIMIT 20
+
 mev_analysis:
   name: MEV Analysis
-  description: Queries for analyzing MEV (Maximal Extractable Value) activity including relays, builders, and block values. For relay-level market share use fct_block_mev_head (xatu-cbt). For individual bid data (values, builder pubkeys, bid traces) use mev_relay_bid_trace (xatu). For validator registrations use mev_relay_validator_registration (xatu).
+  description: Queries for analyzing MEV (Maximal Extractable Value) activity including relays, builders, and block values. For relay-level market share use fct_block_mev_head (xatu-cbt). For individual bid data (values, builder pubkeys, bid traces) use mev_relay_bid_trace (xatu) — the value column is in wei (UInt256). For validator registrations use mev_relay_validator_registration (xatu). For bid count trends use fct_mev_bid_count_by_relay and fct_mev_bid_count_by_builder (xatu-cbt). For highest bid value timing use fct_mev_bid_highest_value_by_builder_chunked_50ms (xatu-cbt).
   examples:
     - name: MEV relay activity
       description: Analyze MEV relay bid activity per slot.
