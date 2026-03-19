@@ -1,0 +1,326 @@
+{
+  "run_id": "2026-03-18T09-49-27",
+  "timestamp": "2026-03-18T09:56:21.273447+00:00",
+  "model": "claude-haiku-4-5",
+  "attempts_per_probe": 5,
+  "total_probes": 4,
+  "total_cost_usd": 2.882646,
+  "summary": {
+    "full_agreement": 1,
+    "disagreement": 3,
+    "agreement_rate": 0.25
+  },
+  "probes": [
+    {
+      "id": "missed_slots_24h",
+      "question": "How many slots were missed (had no block proposed) in the last 24 hours on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "fct_block_head"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.19486235,
+          "duration_ms": 21344,
+          "num_turns": 6,
+          "num_tool_calls": 7
+        },
+        {
+          "tables": [
+            "fct_block_head"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.19895375,
+          "duration_ms": 32801,
+          "num_turns": 6,
+          "num_tool_calls": 7
+        },
+        {
+          "tables": [
+            "fct_block_head"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.18640419999999996,
+          "duration_ms": 21608,
+          "num_turns": 7,
+          "num_tool_calls": 6
+        },
+        {
+          "tables": [
+            "fct_block_head"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.20448535000000004,
+          "duration_ms": 28204,
+          "num_turns": 7,
+          "num_tool_calls": 8
+        },
+        {
+          "tables": [
+            "fct_block_head"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.2109393,
+          "duration_ms": 56363,
+          "num_turns": 9,
+          "num_tool_calls": 10
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "fct_block_head": 5
+        },
+        "finding": "all 5 agreed on fct_block_head"
+      }
+    },
+    {
+      "id": "active_validators",
+      "question": "How many active validators are there currently on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_beacon_validators",
+            "fct_validators",
+            "t_validators"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.16567929999999995,
+          "duration_ms": 202816,
+          "num_turns": 14,
+          "num_tool_calls": 21
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09929059999999999,
+          "duration_ms": 143730,
+          "num_turns": 9,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators",
+            "fct_validator_count_by_entity_by_status_daily"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.16515635,
+          "duration_ms": 164386,
+          "num_turns": 12,
+          "num_tool_calls": 13
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.10684145,
+          "duration_ms": 156766,
+          "num_turns": 10,
+          "num_tool_calls": 16
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1898102,
+          "duration_ms": 182046,
+          "num_turns": 14,
+          "num_tool_calls": 13
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.6,
+        "all_agreed": false,
+        "tables_used": {
+          "canonical_beacon_validators": 5,
+          "fct_validators": 1,
+          "t_validators": 1,
+          "fct_validator_count_by_entity_by_status_daily": 1
+        },
+        "finding": "3/5 used canonical_beacon_validators; 1/5 used canonical_beacon_validators, fct_validators, t_validators; 1/5 used canonical_beacon_validators, fct_validator_count_by_entity_by_status_daily"
+      }
+    },
+    {
+      "id": "empty_blob_submitters",
+      "question": "Who is posting empty blobs (blobs containing zero data) to Ethereum mainnet? Show the top submitters by count.",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "fct_block_blob_submitter"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.15271555,
+          "duration_ms": 72753,
+          "num_turns": 15,
+          "num_tool_calls": 21
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.14075485000000001,
+          "duration_ms": 100010,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.12920784999999999,
+          "duration_ms": 69351,
+          "num_turns": 15,
+          "num_tool_calls": 16
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1030658,
+          "duration_ms": 71768,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1151776,
+          "duration_ms": 81716,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.8,
+        "all_agreed": false,
+        "tables_used": {
+          "canonical_beacon_blob_sidecar": 5,
+          "fct_block_blob_submitter": 1,
+          "dim_block_blob_submitter": 4
+        },
+        "finding": "4/5 used canonical_beacon_blob_sidecar, dim_block_blob_submitter; 1/5 used canonical_beacon_blob_sidecar, fct_block_blob_submitter"
+      }
+    },
+    {
+      "id": "precompile_gas_usage",
+      "question": "Which EVM precompiles consume the most gas on Ethereum mainnet? Rank them by total gas consumed in the last 24 hours.",
+      "attempts": [
+        {
+          "tables": [
+            "int_transaction_call_frame"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09107,
+          "duration_ms": 44120,
+          "num_turns": 6,
+          "num_tool_calls": 12
+        },
+        {
+          "tables": [
+            "int_transaction_call_frame"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.13457865,
+          "duration_ms": 137771,
+          "num_turns": 12,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "int_transaction_call_frame"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09381885000000001,
+          "duration_ms": 77474,
+          "num_turns": 10,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "fct_block_head",
+            "int_transaction_call_frame"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1210233,
+          "duration_ms": 74878,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        },
+        {
+          "tables": [
+            "int_transaction_call_frame"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.07881070000000001,
+          "duration_ms": 58660,
+          "num_turns": 9,
+          "num_tool_calls": 8
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.8,
+        "all_agreed": false,
+        "tables_used": {
+          "int_transaction_call_frame": 5,
+          "fct_block_head": 1
+        },
+        "finding": "4/5 used int_transaction_call_frame; 1/5 used fct_block_head, int_transaction_call_frame"
+      }
+    }
+  ]
+}

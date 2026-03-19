@@ -466,6 +466,33 @@ network_health:
         GROUP BY epoch, epoch_start_date_time
         ORDER BY epoch DESC
 
+    - name: Missed slots count
+      description: Count missed slots (where no block was proposed) in a time window. Uses fct_block_head alone — compare the expected slot range to actual slots present. No join to proposer entity needed for a simple count.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          (max(slot) - min(slot) + 1) AS total_slots_in_range,
+          count(DISTINCT slot) AS proposed_slots,
+          (max(slot) - min(slot) + 1) - count(DISTINCT slot) AS missed_slots,
+          ((max(slot) - min(slot) + 1) - count(DISTINCT slot)) * 100.0 / (max(slot) - min(slot) + 1) AS missed_rate_pct
+        FROM {network}.fct_block_head FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 24 HOUR
+
+    - name: Missed slots per hour
+      description: Track missed slot rate per hour using fct_block_head. Each hour has 300 expected slots (3600s / 12s).
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          toStartOfHour(slot_start_date_time) AS hour,
+          300 AS expected_slots,
+          count(DISTINCT slot) AS proposed_slots,
+          300 - count(DISTINCT slot) AS missed_slots,
+          (300 - count(DISTINCT slot)) * 100.0 / 300 AS missed_rate_pct
+        FROM {network}.fct_block_head FINAL
+        WHERE slot_start_date_time >= now() - INTERVAL 24 HOUR
+        GROUP BY hour
+        ORDER BY hour DESC
+
 entity_analysis:
   name: Entity Analysis
   description: Queries for analyzing staking entities (operators, pools, exchanges) and their performance
@@ -1000,7 +1027,7 @@ head_accuracy:
 
 blob_analysis:
   name: Blob Analysis
-  description: Queries for analyzing EIP-4844 blob data including blob counts, submitters, and L2 rollup activity
+  description: Queries for analyzing EIP-4844 blob data including blob counts, submitters, and L2 rollup activity. For blob counts and submitter identity, use dim_block_blob_submitter (xatu-cbt). For blob content analysis (empty blobs, blob sizes), use canonical_beacon_blob_sidecar (xatu) which has blob_size and blob_empty_size columns. Cross-cluster joins require two separate queries.
   examples:
     - name: Blob count per slot
       description: Get the number of blobs in each slot.
@@ -1121,6 +1148,24 @@ blob_analysis:
         FROM {network}.dim_block_blob_submitter FINAL
         WHERE updated_date_time >= now() - INTERVAL 1 HOUR
         ORDER BY updated_date_time DESC
+        LIMIT 50
+
+    - name: Empty blob detection
+      description: Find blobs with zero useful data using canonical_beacon_blob_sidecar (xatu cluster). The blob_empty_size column shows how many bytes are empty — when blob_empty_size equals blob_size, the blob is entirely empty. To identify submitters, join these slots to dim_block_blob_submitter on xatu-cbt (separate query, different cluster).
+      cluster: xatu
+      query: |
+        SELECT
+          slot,
+          proposer_index,
+          blob_index,
+          blob_size,
+          blob_empty_size,
+          versioned_hash
+        FROM canonical_beacon_blob_sidecar
+        WHERE slot_start_date_time >= now() - INTERVAL 24 HOUR
+          AND meta_network_name = 'mainnet'
+          AND blob_empty_size = blob_size
+        ORDER BY slot DESC
         LIMIT 50
 
 data_column_sidecars:
@@ -1548,6 +1593,67 @@ execution_state:
         ORDER BY day_start_date DESC
         LIMIT 1
 
+
+execution_traces:
+  name: Execution Trace Analysis (Call Frames, Gas Breakdown)
+  description: Queries for analyzing EVM execution traces using int_transaction_call_frame on xatu-cbt. This table contains one row per call frame per transaction — use it for gas breakdown by contract, precompile usage, call depth analysis, and function-level profiling. Partitioned by block_number — always filter on block_number. For opcode-level gas breakdown within a frame, use int_transaction_call_frame_opcode_gas instead.
+  examples:
+    - name: Precompile gas usage for a block
+      description: Rank EVM precompiles by gas consumed in a specific block. Precompile contracts live at addresses 0x01–0x0a. Uses int_transaction_call_frame which has per-frame gas accounting.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          target_address,
+          count() AS call_count,
+          sum(gas) AS total_self_gas,
+          avg(gas) AS avg_gas_per_call,
+          sum(gas_cumulative) AS total_cumulative_gas
+        FROM {network}.int_transaction_call_frame
+        WHERE block_number = 22068000
+          AND target_address IN (
+            '0x0000000000000000000000000000000000000001',
+            '0x0000000000000000000000000000000000000002',
+            '0x0000000000000000000000000000000000000003',
+            '0x0000000000000000000000000000000000000004',
+            '0x0000000000000000000000000000000000000005',
+            '0x0000000000000000000000000000000000000006',
+            '0x0000000000000000000000000000000000000007',
+            '0x0000000000000000000000000000000000000008',
+            '0x0000000000000000000000000000000000000009',
+            '0x000000000000000000000000000000000000000a'
+          )
+        GROUP BY target_address
+        ORDER BY total_self_gas DESC
+
+    - name: Top gas-consuming contracts in a block
+      description: Find the contracts consuming the most gas in a specific block. Uses self gas (excludes child frames) for accurate per-contract attribution.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          target_address,
+          count() AS call_count,
+          sum(gas) AS total_self_gas,
+          avg(gas) AS avg_gas_per_call
+        FROM {network}.int_transaction_call_frame
+        WHERE block_number = 22068000
+          AND target_address IS NOT NULL
+        GROUP BY target_address
+        ORDER BY total_self_gas DESC
+        LIMIT 20
+
+    - name: Call type distribution for a block range
+      description: Breakdown of call types (CALL, DELEGATECALL, STATICCALL, CREATE, etc.) and their gas usage across a block range.
+      cluster: xatu-cbt
+      query: |
+        SELECT
+          call_type,
+          count() AS frame_count,
+          sum(gas) AS total_gas,
+          avg(depth) AS avg_depth
+        FROM {network}.int_transaction_call_frame
+        WHERE block_number BETWEEN 22068000 AND 22068100
+        GROUP BY call_type
+        ORDER BY total_gas DESC
 
 prepared_blocks:
   name: Prepared Blocks (Local Block Building)

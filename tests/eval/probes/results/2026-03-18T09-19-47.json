@@ -1,0 +1,781 @@
+{
+  "run_id": "2026-03-18T09-19-47",
+  "timestamp": "2026-03-18T09:34:39.867868+00:00",
+  "model": "claude-haiku-4-5",
+  "attempts_per_probe": 5,
+  "total_probes": 10,
+  "total_cost_usd": 7.624843,
+  "summary": {
+    "full_agreement": 6,
+    "disagreement": 4,
+    "agreement_rate": 0.6
+  },
+  "probes": [
+    {
+      "id": "precompile_gas_usage",
+      "question": "Which EVM precompiles consume the most gas on Ethereum mainnet? Rank them by total gas consumed in the last 24 hours.",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_execution_traces",
+            "fct_trace"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.31008365000000004,
+          "duration_ms": 154362,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        },
+        {
+          "tables": [
+            "canonical_execution_traces",
+            "fct_block"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.2749407,
+          "duration_ms": 78615,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        },
+        {
+          "tables": [
+            "canonical_execution_traces",
+            "fct_trace_calls"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.25610635,
+          "duration_ms": 51084,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.22452190000000005,
+          "duration_ms": 37618,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "canonical_execution_traces"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.36804549999999997,
+          "duration_ms": 52746,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.2,
+        "all_agreed": false,
+        "tables_used": {
+          "canonical_execution_traces": 4,
+          "fct_trace": 1,
+          "fct_block": 1,
+          "fct_trace_calls": 1
+        },
+        "finding": "1/5 used canonical_execution_traces, fct_trace; 1/5 used canonical_execution_traces, fct_block; 1/5 used canonical_execution_traces, fct_trace_calls; 1/5 used (no tables); 1/5 used canonical_execution_traces"
+      }
+    },
+    {
+      "id": "attestation_propagation_p95",
+      "question": "What is the p95 attestation propagation time in milliseconds over the last hour on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "beacon_api_eth_v1_events_attestation"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.10231434999999998,
+          "duration_ms": 18542,
+          "num_turns": 5,
+          "num_tool_calls": 7
+        },
+        {
+          "tables": [
+            "beacon_api_eth_v1_events_attestation"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.10672519999999999,
+          "duration_ms": 44487,
+          "num_turns": 8,
+          "num_tool_calls": 9
+        },
+        {
+          "tables": [
+            "beacon_api_eth_v1_events_attestation"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.0645541,
+          "duration_ms": 19065,
+          "num_turns": 6,
+          "num_tool_calls": 5
+        },
+        {
+          "tables": [
+            "beacon_api_eth_v1_events_attestation"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09559544999999998,
+          "duration_ms": 19745,
+          "num_turns": 6,
+          "num_tool_calls": 6
+        },
+        {
+          "tables": [
+            "beacon_api_eth_v1_events_attestation"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09277799999999999,
+          "duration_ms": 44599,
+          "num_turns": 7,
+          "num_tool_calls": 8
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "beacon_api_eth_v1_events_attestation": 5
+        },
+        "finding": "all 5 agreed on beacon_api_eth_v1_events_attestation"
+      }
+    },
+    {
+      "id": "ipv4_peer_sharing",
+      "question": "How many peer_ids and consensus clients share the same IPv4 address on Ethereum mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "libp2p_connected"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11188025000000001,
+          "duration_ms": 47487,
+          "num_turns": 11,
+          "num_tool_calls": 13
+        },
+        {
+          "tables": [
+            "libp2p_connected"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.22536575000000006,
+          "duration_ms": 98539,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "libp2p_connected"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.136634,
+          "duration_ms": 71859,
+          "num_turns": 9,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "libp2p_connected"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09846099999999999,
+          "duration_ms": 51497,
+          "num_turns": 11,
+          "num_tool_calls": 10
+        },
+        {
+          "tables": [
+            "libp2p_connected"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.20967180000000002,
+          "duration_ms": 95527,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "libp2p_connected": 5
+        },
+        "finding": "all 5 agreed on libp2p_connected"
+      }
+    },
+    {
+      "id": "block_timing_vs_attestation",
+      "question": "For the last hour on mainnet, is there a correlation between late block arrivals (blocks arriving after 4 seconds into the slot) and lower attestation participation in the following slot?",
+      "attempts": [
+        {
+          "tables": [
+            "fct_attestation_correctness_head",
+            "fct_block_first_seen_by_node"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.15849510000000003,
+          "duration_ms": 92269,
+          "num_turns": 14,
+          "num_tool_calls": 16
+        },
+        {
+          "tables": [
+            "fct_attestation_correctness_head",
+            "fct_block_first_seen_by_node"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.13706125000000002,
+          "duration_ms": 93397,
+          "num_turns": 13,
+          "num_tool_calls": 12
+        },
+        {
+          "tables": [
+            "fct_attestation_correctness_head",
+            "fct_block_first_seen_by_node"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.0836964,
+          "duration_ms": 44679,
+          "num_turns": 9,
+          "num_tool_calls": 8
+        },
+        {
+          "tables": [
+            "fct_attestation_correctness_head",
+            "fct_block_first_seen_by_node"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.17209055000000004,
+          "duration_ms": 84493,
+          "num_turns": 13,
+          "num_tool_calls": 14
+        },
+        {
+          "tables": [
+            "fct_attestation_correctness_head",
+            "fct_block_first_seen_by_node"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1822797,
+          "duration_ms": 104627,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "fct_attestation_correctness_head": 5,
+          "fct_block_first_seen_by_node": 5
+        },
+        "finding": "all 5 agreed on fct_attestation_correctness_head, fct_block_first_seen_by_node"
+      }
+    },
+    {
+      "id": "empty_blob_submitters",
+      "question": "Who is posting empty blobs (blobs containing zero data) to Ethereum mainnet? Show the top submitters by count.",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter",
+            "fct_blobs_blob_details"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.19688840000000002,
+          "duration_ms": 66709,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.16142005,
+          "duration_ms": 57322,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.2297679,
+          "duration_ms": 68570,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.19805050000000002,
+          "duration_ms": 66946,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        },
+        {
+          "tables": [
+            "canonical_beacon_blob_sidecar",
+            "canonical_beacon_block_execution_transaction",
+            "dim_block_blob_submitter"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.18512705,
+          "duration_ms": 54834,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.6,
+        "all_agreed": false,
+        "tables_used": {
+          "canonical_beacon_blob_sidecar": 5,
+          "dim_block_blob_submitter": 5,
+          "fct_blobs_blob_details": 1,
+          "canonical_beacon_block_execution_transaction": 1
+        },
+        "finding": "3/5 used canonical_beacon_blob_sidecar, dim_block_blob_submitter; 1/5 used canonical_beacon_blob_sidecar, dim_block_blob_submitter, fct_blobs_blob_details; 1/5 used canonical_beacon_blob_sidecar, canonical_beacon_block_execution_transaction, dim_block_blob_submitter"
+      }
+    },
+    {
+      "id": "blob_count_last_hour",
+      "question": "How many blobs were included in blocks in the last hour on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "fct_block_blob_count_head"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.08467965000000001,
+          "duration_ms": 23548,
+          "num_turns": 7,
+          "num_tool_calls": 9
+        },
+        {
+          "tables": [
+            "fct_block_blob_count_head"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.10854785000000002,
+          "duration_ms": 40417,
+          "num_turns": 9,
+          "num_tool_calls": 13
+        },
+        {
+          "tables": [
+            "fct_block_blob_count_head"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.06426609999999999,
+          "duration_ms": 18841,
+          "num_turns": 6,
+          "num_tool_calls": 5
+        },
+        {
+          "tables": [
+            "fct_block_blob_count_head"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09761809999999999,
+          "duration_ms": 29723,
+          "num_turns": 8,
+          "num_tool_calls": 10
+        },
+        {
+          "tables": [
+            "fct_block_blob_count_head"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11876809999999997,
+          "duration_ms": 51027,
+          "num_turns": 10,
+          "num_tool_calls": 12
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "fct_block_blob_count_head": 5
+        },
+        "finding": "all 5 agreed on fct_block_blob_count_head"
+      }
+    },
+    {
+      "id": "validator_status_distribution",
+      "question": "What is the distribution of validator statuses (active_ongoing, exited, pending, etc.) on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.16624915000000004,
+          "duration_ms": 181259,
+          "num_turns": 12,
+          "num_tool_calls": 15
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11338275,
+          "duration_ms": 145557,
+          "num_turns": 8,
+          "num_tool_calls": 12
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.1104921,
+          "duration_ms": 89897,
+          "num_turns": 8,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.19799995,
+          "duration_ms": 246015,
+          "num_turns": 15,
+          "num_tool_calls": 20
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.13309195000000001,
+          "duration_ms": 243718,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "canonical_beacon_validators": 5
+        },
+        "finding": "all 5 agreed on canonical_beacon_validators"
+      }
+    },
+    {
+      "id": "mev_validator_registrations",
+      "question": "How many unique validators have registered with each MEV relay in the last 24 hours on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "mev_relay_validator_registration"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.08867989999999999,
+          "duration_ms": 84949,
+          "num_turns": 7,
+          "num_tool_calls": 9
+        },
+        {
+          "tables": [
+            "mev_relay_validator_registration"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.13217890000000002,
+          "duration_ms": 48424,
+          "num_turns": 7,
+          "num_tool_calls": 10
+        },
+        {
+          "tables": [
+            "mev_relay_validator_registration"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09903195,
+          "duration_ms": 74171,
+          "num_turns": 5,
+          "num_tool_calls": 7
+        },
+        {
+          "tables": [
+            "mev_relay_validator_registration"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11465249999999999,
+          "duration_ms": 28955,
+          "num_turns": 15,
+          "num_tool_calls": 15
+        },
+        {
+          "tables": [
+            "mev_relay_validator_registration"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.21987194999999998,
+          "duration_ms": 190624,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 1.0,
+        "all_agreed": true,
+        "tables_used": {
+          "mev_relay_validator_registration": 5
+        },
+        "finding": "all 5 agreed on mev_relay_validator_registration"
+      }
+    },
+    {
+      "id": "active_validators",
+      "question": "How many active validators are there currently on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.128916,
+          "duration_ms": 135868,
+          "num_turns": 10,
+          "num_tool_calls": 13
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.22154915,
+          "duration_ms": 169389,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.15716054999999998,
+          "duration_ms": 222725,
+          "num_turns": 15,
+          "num_tool_calls": 18
+        },
+        {
+          "tables": [
+            "canonical_beacon_validators"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11779514999999999,
+          "duration_ms": 101232,
+          "num_turns": 9,
+          "num_tool_calls": 11
+        },
+        {
+          "tables": [
+            "beacon_chain_metadata",
+            "canonical_beacon_validators"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.14421299999999998,
+          "duration_ms": 100049,
+          "num_turns": 15,
+          "num_tool_calls": 14
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.8,
+        "all_agreed": false,
+        "tables_used": {
+          "canonical_beacon_validators": 5,
+          "beacon_chain_metadata": 1
+        },
+        "finding": "4/5 used canonical_beacon_validators; 1/5 used beacon_chain_metadata, canonical_beacon_validators"
+      }
+    },
+    {
+      "id": "missed_slots_24h",
+      "question": "How many slots were missed (had no block proposed) in the last 24 hours on mainnet?",
+      "attempts": [
+        {
+          "tables": [
+            "fct_block_head",
+            "fct_missed_slot_rate_hourly"
+          ],
+          "persona": "default",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.13452304999999998,
+          "duration_ms": 49479,
+          "num_turns": 12,
+          "num_tool_calls": 15
+        },
+        {
+          "tables": [],
+          "persona": "careful",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.09918995000000001,
+          "duration_ms": 18767,
+          "num_turns": 3,
+          "num_tool_calls": 6
+        },
+        {
+          "tables": [
+            "fct_block_head",
+            "fct_block_proposer_entity"
+          ],
+          "persona": "concise",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.11469685000000002,
+          "duration_ms": 37931,
+          "num_turns": 8,
+          "num_tool_calls": 16
+        },
+        {
+          "tables": [
+            "fct_block_head",
+            "fct_block_proposer_entity"
+          ],
+          "persona": "explorer",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.08564340000000001,
+          "duration_ms": 35528,
+          "num_turns": 9,
+          "num_tool_calls": 8
+        },
+        {
+          "tables": [
+            "fct_block_head",
+            "fct_block_proposer_entity"
+          ],
+          "persona": "skeptic",
+          "error": false,
+          "error_message": null,
+          "cost_usd": 0.18908984999999998,
+          "duration_ms": 74744,
+          "num_turns": 15,
+          "num_tool_calls": 17
+        }
+      ],
+      "agreement": {
+        "table_agreement": 0.6,
+        "all_agreed": false,
+        "tables_used": {
+          "fct_block_head": 4,
+          "fct_missed_slot_rate_hourly": 1,
+          "fct_block_proposer_entity": 3
+        },
+        "finding": "3/5 used fct_block_head, fct_block_proposer_entity; 1/5 used fct_block_head, fct_missed_slot_rate_hourly; 1/5 used (no tables)"
+      }
+    }
+  ]
+}
