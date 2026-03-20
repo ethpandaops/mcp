@@ -40,10 +40,6 @@ Thumbs.db
 /shared/
 *.log
 
-# Embedding models (downloaded via 'make download-model')
-/models/
-*.gguf
-
 # Sandbox temp files
 /tmp/
 

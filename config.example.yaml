@@ -53,8 +53,3 @@ proxy:
 observability:
   metrics_enabled: true
   metrics_port: 31490
-
-# Semantic search configuration.
-# The model directory must contain model.onnx and tokenizer.json.
-# semantic_search:
-#   model_path: "models/all-MiniLM-L6-v2"  # Local dev default; in Docker image it's /usr/share/panda/all-MiniLM-L6-v2
